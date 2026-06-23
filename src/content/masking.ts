@@ -22,6 +22,8 @@ const SECRET_MARKER_PATTERNS = [
   /(^|[^a-z0-9])creditcard(?:number)?([^a-z0-9]|$)/,
   /(^|[^a-z0-9])card([^a-z0-9]|$)/,
   /(^|[^a-z0-9])cardnumber([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])csc([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])csccode([^a-z0-9]|$)/,
   /(^|[^a-z0-9])cvc([^a-z0-9]|$)/,
   /(^|[^a-z0-9])cvccode([^a-z0-9]|$)/,
   /(^|[^a-z0-9])cvv([^a-z0-9]|$)/,
@@ -81,7 +83,12 @@ function hasCreditCardMarker(haystack: string): boolean {
     /(^|[^a-z0-9])credit([^a-z0-9]|$)/.test(haystack) ||
     /(^|[^a-z0-9])creditcard(?:number)?([^a-z0-9]|$)/.test(haystack) ||
     /(^|[^a-z0-9])card([^a-z0-9]|$)/.test(haystack) ||
-    /(^|[^a-z0-9])cardnumber([^a-z0-9]|$)/.test(haystack)
+    /(^|[^a-z0-9])cardnumber([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])csc(?:code)?([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])cvc(?:code)?([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])cvv(?:code)?([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])security[_\s-]*code([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])securitycode([^a-z0-9]|$)/.test(haystack)
   );
 }
 

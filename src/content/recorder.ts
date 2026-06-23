@@ -22,6 +22,9 @@ type PendingFillSend = {
   sequence: number;
   step: ScenarioStep;
 };
+type ActivationDetails = {
+  replayTarget: HTMLElement;
+};
 
 const INPUT_DEBOUNCE_MS = 300;
 const pendingInputs = new Map<
@@ -35,6 +38,7 @@ let cachedRecording = false;
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
 const replayingSubmits = new WeakSet<HTMLFormElement>();
+const replayingActivations = new WeakSet<HTMLElement>();
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -184,6 +188,48 @@ async function flushAndRecordClick(
   if (!isRecording()) {
     return;
   }
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    await recordClick(event, onStep);
+    return;
+  }
+  const activation = getActivationDetails(event);
+  if (activation && replayingActivations.has(activation.replayTarget)) {
+    replayingActivations.delete(activation.replayTarget);
+    return;
+  }
+  if (
+    activation &&
+    event.cancelable &&
+    (pendingInputs.size > 0 || activeFlush)
+  ) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    await flushTrackedPendingInputs(onStep, { throwOnError: true }).catch(
+      (error: unknown) => {
+        console.warn(
+          "Scenario Recorder could not flush pending input before activation.",
+          error,
+        );
+      },
+    );
+    try {
+      await recordClick(event, onStep);
+    } catch (error) {
+      console.warn(
+        "Scenario Recorder could not record click after pending input flush.",
+        error,
+      );
+    } finally {
+      replayActivation(activation);
+    }
+    return;
+  }
   await recordClick(event, onStep);
 }
 
@@ -198,6 +244,31 @@ function flushBeforeActivation(event: Event, onStep: StepHandler): void {
   void flushTrackedPendingInputs(onStep).catch((error: unknown) => {
     console.warn("Scenario Recorder failed to flush before activation.", error);
   });
+}
+
+function getActivationDetails(event: Event): ActivationDetails | undefined {
+  const target = getComposedElement(event);
+  const activationTarget =
+    target?.closest<HTMLElement>(
+      "a[href],button,input[type='button'],input[type='submit'],input[type='reset'],[role='button'],[role='link']",
+    ) ?? undefined;
+  if (!target || !activationTarget) {
+    return undefined;
+  }
+  return {
+    replayTarget: target,
+  };
+}
+
+function replayActivation(activation: ActivationDetails): void {
+  replayingActivations.add(activation.replayTarget);
+  try {
+    activation.replayTarget.click();
+  } finally {
+    window.setTimeout(() => {
+      replayingActivations.delete(activation.replayTarget);
+    }, 0);
+  }
 }
 
 async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promise<void> {
