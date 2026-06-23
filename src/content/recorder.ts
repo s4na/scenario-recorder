@@ -199,13 +199,6 @@ function isSecretPathMarker(segment: string): boolean {
 
 function shouldRedactHashPath(rawHash: string): boolean {
   const normalized = safeDecode(rawHash).toLowerCase();
-  if (
-    ["token", "secret", "password", "code", "credential", "key"].some((key) =>
-      normalized.includes(key),
-    )
-  ) {
-    return true;
-  }
   const segments = normalized.split(/[/?#&=]+/);
   return segments.some((segment) =>
     SECRET_PATH_MARKERS.includes(segment),
@@ -363,6 +356,11 @@ function getNavigationClickTarget(event: MouseEvent): HTMLElement | undefined {
   }
   if (submitter instanceof HTMLInputElement && submitter.type === "submit") {
     return submitter;
+  }
+  if (pendingInputs.size > 0) {
+    return targetElement.closest<HTMLElement>(
+      "button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]",
+    ) ?? targetElement;
   }
   return undefined;
 }

@@ -152,13 +152,6 @@ function isSecretPathMarker(segment: string): boolean {
 
 function shouldRedactHashPath(rawHash: string): boolean {
   const normalized = safeDecode(rawHash).toLowerCase();
-  if (
-    ["token", "secret", "password", "code", "credential", "key"].some((key) =>
-      normalized.includes(key),
-    )
-  ) {
-    return true;
-  }
   const segments = normalized.split(/[/?#&=]+/);
   return segments.some((segment) =>
     SECRET_PATH_MARKERS.includes(segment),
