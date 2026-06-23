@@ -1,26 +1,31 @@
-const SECRET_MARKERS = [
-  "access_token",
-  "authorization",
-  "auth",
-  "client_secret",
-  "credential",
-  "id_token",
-  "key",
-  "otp",
-  "password",
-  "pass",
-  "refresh_token",
-  "session",
-  "signature",
-  "api_key",
-  "apikey",
-  "secret",
-  "ticket",
-  "token",
-  "credit",
-  "card",
-  "cvc",
-  "cvv"
+const SECRET_MARKER_PATTERNS = [
+  /(^|[^a-z0-9])access[_\s-]*token([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])authorization([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])auth(?:entication)?([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])client[_\s-]*secret([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])credentials?([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])csrf[_\s-]*token([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])id[_\s-]*token([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])key([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])otp([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])password([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])pass([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])refresh[_\s-]*token([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])session([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])signature([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])api[_\s-]*key([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])apikey([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])secret([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])ticket([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])token([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])credit([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])creditcard(?:number)?([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])card([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])cardnumber([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])cvc([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])cvccode([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])cvv([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])cvvcode([^a-z0-9]|$)/
 ];
 
 const SECRET_CODE_PATTERNS = [
@@ -57,9 +62,27 @@ function searchableAttributes(element: HTMLElement): string {
     getAriaLabelledByText(element),
     getLabelText(element)
   ]
-    .filter(Boolean)
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => [value, splitCamelCase(value)])
     .join(" ")
     .toLowerCase();
+}
+
+function splitCamelCase(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+}
+
+function hasSecretMarker(haystack: string): boolean {
+  return SECRET_MARKER_PATTERNS.some((pattern) => pattern.test(haystack));
+}
+
+function hasCreditCardMarker(haystack: string): boolean {
+  return (
+    /(^|[^a-z0-9])credit([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])creditcard(?:number)?([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])card([^a-z0-9]|$)/.test(haystack) ||
+    /(^|[^a-z0-9])cardnumber([^a-z0-9]|$)/.test(haystack)
+  );
 }
 
 function getAriaLabelledByText(element: HTMLElement): string | undefined {
@@ -103,7 +126,7 @@ export function shouldMaskValue(element: HTMLElement): boolean {
 
   const haystack = searchableAttributes(element);
   return (
-    SECRET_MARKERS.some((marker) => haystack.includes(marker)) ||
+    hasSecretMarker(haystack) ||
     SECRET_CODE_PATTERNS.some((pattern) => pattern.test(haystack))
   );
 }
@@ -114,21 +137,13 @@ export function maskValue(element: HTMLElement, value: string | string[]): strin
   }
 
   const haystack = searchableAttributes(element);
-  if (haystack.includes("credit") || haystack.includes("card")) {
+  if (hasCreditCardMarker(haystack)) {
     return "{{CREDIT_CARD}}";
   }
   if (
-    haystack.includes("token") ||
-    haystack.includes("secret") ||
-    haystack.includes("api") ||
-    haystack.includes("otp") ||
+    hasSecretMarker(haystack) ||
     SECRET_CODE_PATTERNS.some((pattern) => pattern.test(haystack)) ||
-    haystack.includes("credential") ||
-    haystack.includes("key") ||
-    haystack.includes("authorization") ||
-    haystack.includes("auth") ||
-    haystack.includes("session") ||
-    haystack.includes("signature")
+    /(^|[^a-z0-9])api([^a-z0-9]|$)/.test(haystack)
   ) {
     return "{{SECRET}}";
   }
