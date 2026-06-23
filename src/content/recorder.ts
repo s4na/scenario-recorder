@@ -32,6 +32,7 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let cachedRecording = false;
 let pendingInputSequence = 0;
+let activeFlush: Promise<void> | undefined;
 const replayingSubmits = new WeakSet<HTMLFormElement>();
 
 function createStepId(): string {
@@ -181,7 +182,7 @@ function flushBeforeActivation(event: Event, onStep: StepHandler): void {
   if (!target?.closest("button,a,input,textarea,select,[role],label")) {
     return;
   }
-  void flushPendingInputs(onStep).catch((error: unknown) => {
+  void flushTrackedPendingInputs(onStep).catch((error: unknown) => {
     console.warn("Scenario Recorder failed to flush before activation.", error);
   });
 }
@@ -196,13 +197,17 @@ async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promi
     await flushPendingInputs(onStep);
     return;
   }
-  if (replayingSubmits.has(form) || pendingInputs.size === 0 || !event.cancelable) {
+  if (
+    replayingSubmits.has(form) ||
+    (pendingInputs.size === 0 && !activeFlush) ||
+    !event.cancelable
+  ) {
     replayingSubmits.delete(form);
     return;
   }
   event.preventDefault();
   event.stopImmediatePropagation();
-  await flushPendingInputs(onStep, { throwOnError: true }).then(() => {
+  await flushTrackedPendingInputs(onStep, { throwOnError: true }).then(() => {
     const submitter =
       event.submitter instanceof HTMLElement ? event.submitter : undefined;
     replayFormSubmit(form, submitter);
@@ -412,7 +417,7 @@ export function installRecorder(onStep: StepHandler): void {
   );
 
   window.addEventListener("pagehide", () => {
-    void flushPendingInputs(onStep);
+    void flushTrackedPendingInputs(onStep);
   });
 }
 
@@ -449,6 +454,22 @@ export async function flushPendingInputs(
       ? failure.reason
       : new Error(String(failure.reason));
   }
+}
+
+function flushTrackedPendingInputs(
+  onStep: StepHandler,
+  options: FlushOptions = {},
+): Promise<void> {
+  const next = (activeFlush ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => flushPendingInputs(onStep, options));
+  const tracked = next.finally(() => {
+    if (activeFlush === tracked) {
+      activeFlush = undefined;
+    }
+  });
+  activeFlush = tracked;
+  return next;
 }
 
 async function sendPendingFillsInOrder(

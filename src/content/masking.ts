@@ -3,7 +3,6 @@ const SECRET_MARKERS = [
   "authorization",
   "auth",
   "client_secret",
-  "code",
   "credential",
   "id_token",
   "key",
@@ -22,6 +21,20 @@ const SECRET_MARKERS = [
   "card",
   "cvc",
   "cvv"
+];
+
+const SECRET_CODE_PATTERNS = [
+  /\bauth(?:entication)?[_\s-]*code\b/,
+  /\bverification[_\s-]*code\b/,
+  /\bone[_\s-]*code\b/,
+  /\bone[_\s-]*time[_\s-]*code\b/,
+  /\botp[_\s-]*code\b/,
+  /\bmfa[_\s-]*code\b/,
+  /\b2fa[_\s-]*code\b/,
+  /\btotp[_\s-]*code\b/,
+  /\btwo[_\s-]*factor[_\s-]*code\b/,
+  /\btwofactorcode\b/,
+  /\btwo[_\s-]*step[_\s-]*code\b/
 ];
 
 const PASSWORD_AUTOCOMPLETE_VALUES = new Set([
@@ -62,7 +75,10 @@ export function shouldMaskValue(element: HTMLElement): boolean {
   }
 
   const haystack = searchableAttributes(element);
-  return SECRET_MARKERS.some((marker) => haystack.includes(marker));
+  return (
+    SECRET_MARKERS.some((marker) => haystack.includes(marker)) ||
+    SECRET_CODE_PATTERNS.some((pattern) => pattern.test(haystack))
+  );
 }
 
 export function maskValue(element: HTMLElement, value: string | string[]): string | string[] {
@@ -79,7 +95,7 @@ export function maskValue(element: HTMLElement, value: string | string[]): strin
     haystack.includes("secret") ||
     haystack.includes("api") ||
     haystack.includes("otp") ||
-    haystack.includes("code") ||
+    SECRET_CODE_PATTERNS.some((pattern) => pattern.test(haystack)) ||
     haystack.includes("credential") ||
     haystack.includes("key") ||
     haystack.includes("authorization") ||

@@ -25,6 +25,7 @@ const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
 const NAVIGATION_RECORD_DELAY_MS = 250;
 let stateMutationQueue: Promise<unknown> = Promise.resolve();
+let recordingTransitionInProgress = false;
 const tabUrls = new Map<number, string>();
 const pendingNavigations = new Map<number, PendingNavigation>();
 const tabUrlsReady = initializeTabUrls();
@@ -101,23 +102,26 @@ async function startRecording(): Promise<RecorderState> {
 }
 
 async function pauseRecording(): Promise<RecorderState> {
-  return enqueueStateMutation(async () => {
-    const now = toIsoNow();
-    const state = await getRecorderState();
-    if (state.status !== "recording") {
-      return state;
-    }
-    const sessions = [...state.recordingSessions];
-    const lastSession = sessions[sessions.length - 1] ?? {};
-    sessions[sessions.length - 1] = { ...lastSession, pausedAt: now };
-    const nextState = {
-      ...state,
-      status: "paused" as const,
-      pausedAt: now,
-      recordingSessions: sessions,
-    };
-    await setRecorderState(nextState);
-    return nextState;
+  return withRecordingTransition(async () => {
+    await drainPendingNavigations();
+    return enqueueStateMutation(async () => {
+      const now = toIsoNow();
+      const state = await getRecorderState();
+      if (state.status !== "recording") {
+        return state;
+      }
+      const sessions = [...state.recordingSessions];
+      const lastSession = sessions[sessions.length - 1] ?? {};
+      sessions[sessions.length - 1] = { ...lastSession, pausedAt: now };
+      const nextState = {
+        ...state,
+        status: "paused" as const,
+        pausedAt: now,
+        recordingSessions: sessions,
+      };
+      await setRecorderState(nextState);
+      return nextState;
+    });
   });
 }
 
@@ -140,24 +144,36 @@ async function resumeRecording(): Promise<RecorderState> {
 }
 
 async function stopRecording(): Promise<RecorderState> {
-  return enqueueStateMutation(async () => {
-    const now = toIsoNow();
-    const state = await getRecorderState();
-    if (state.status === "idle") {
-      return state;
-    }
-    const sessions = [...state.recordingSessions];
-    const lastSession = sessions[sessions.length - 1] ?? {};
-    sessions[sessions.length - 1] = { ...lastSession, stoppedAt: now };
-    const nextState = {
-      ...state,
-      status: "idle" as const,
-      stoppedAt: now,
-      recordingSessions: sessions,
-    };
-    await setRecorderState(nextState);
-    return nextState;
+  return withRecordingTransition(async () => {
+    await drainPendingNavigations();
+    return enqueueStateMutation(async () => {
+      const now = toIsoNow();
+      const state = await getRecorderState();
+      if (state.status === "idle") {
+        return state;
+      }
+      const sessions = [...state.recordingSessions];
+      const lastSession = sessions[sessions.length - 1] ?? {};
+      sessions[sessions.length - 1] = { ...lastSession, stoppedAt: now };
+      const nextState = {
+        ...state,
+        status: "idle" as const,
+        stoppedAt: now,
+        recordingSessions: sessions,
+      };
+      await setRecorderState(nextState);
+      return nextState;
+    });
   });
+}
+
+async function withRecordingTransition<T>(operation: () => Promise<T>): Promise<T> {
+  recordingTransitionInProgress = true;
+  try {
+    return await operation();
+  } finally {
+    recordingTransitionInProgress = false;
+  }
 }
 
 async function recordStep(
@@ -221,6 +237,7 @@ async function recordTabNavigation(
   tabId: number,
   toUrl: string,
   title?: string,
+  eventTimestamp = Date.now(),
 ): Promise<void> {
   await tabUrlsReady;
   const fromUrl = tabUrls.get(tabId);
@@ -228,13 +245,23 @@ async function recordTabNavigation(
     await setTabUrl(tabId, toUrl);
     return;
   }
-  schedulePendingNavigation(tabId, { fromUrl, title, toUrl });
+  const state = await getRecorderState();
+  if (
+    recordingTransitionInProgress ||
+    state.status !== "recording" ||
+    eventTimestamp < getActiveSessionStartedAt(state)
+  ) {
+    cancelPendingNavigation(tabId);
+    await setTabUrl(tabId, toUrl);
+    return;
+  }
+  schedulePendingNavigation(tabId, { fromUrl, timestamp: eventTimestamp, title, toUrl });
   void saveTabUrls();
 }
 
 function schedulePendingNavigation(
   tabId: number,
-  details: Omit<PendingNavigation, "timer" | "timestamp">,
+  details: Omit<PendingNavigation, "timer">,
 ): void {
   const previous = takePendingNavigation(tabId);
   if (previous) {
@@ -244,7 +271,6 @@ function schedulePendingNavigation(
   void saveTabUrls();
   const pending: PendingNavigation = {
     ...details,
-    timestamp: Date.now(),
     timer: setTimeout(() => {
       void commitPendingNavigation(tabId);
     }, NAVIGATION_RECORD_DELAY_MS),
@@ -260,6 +286,27 @@ async function commitPendingNavigation(tabId: number): Promise<void> {
   tabUrls.set(tabId, pending.toUrl);
   void saveTabUrls();
   await appendNavigationStep(pending);
+}
+
+async function drainPendingNavigations(): Promise<void> {
+  const pendingTabIds = Array.from(pendingNavigations.keys());
+  await Promise.all(pendingTabIds.map((tabId) => commitPendingNavigation(tabId)));
+}
+
+function cancelPendingNavigation(tabId: number): void {
+  const pending = takePendingNavigation(tabId);
+  if (!pending) {
+    return;
+  }
+  tabUrls.set(tabId, pending.toUrl);
+  void saveTabUrls();
+}
+
+function getActiveSessionStartedAt(state: RecorderState): number {
+  const session = state.recordingSessions[state.recordingSessions.length - 1];
+  return Date.parse(
+    session?.resumedAt ?? session?.startedAt ?? state.startedAt ?? "1970-01-01T00:00:00.000Z",
+  );
 }
 
 function takePendingNavigation(tabId: number): PendingNavigation | undefined {
@@ -296,11 +343,7 @@ async function setTabUrl(tabId: number, url: string): Promise<void> {
 }
 
 async function deleteTabUrl(tabId: number): Promise<void> {
-  const pending = pendingNavigations.get(tabId);
-  if (pending) {
-    clearTimeout(pending.timer);
-    pendingNavigations.delete(tabId);
-  }
+  cancelPendingNavigation(tabId);
   tabUrls.delete(tabId);
   await saveTabUrls();
 }
@@ -398,9 +441,14 @@ async function saveCurrentScenario(
 }
 
 async function clearCurrentRecording(): Promise<RecorderState> {
-  return enqueueStateMutation(async () => {
-    await clearRecorderState();
-    return getRecorderState();
+  return withRecordingTransition(async () => {
+    for (const tabId of pendingNavigations.keys()) {
+      cancelPendingNavigation(tabId);
+    }
+    return enqueueStateMutation(async () => {
+      await clearRecorderState();
+      return getRecorderState();
+    });
   });
 }
 
@@ -510,7 +558,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) {
     return;
   }
-  void recordTabNavigation(details.tabId, details.url);
+  void recordTabNavigation(details.tabId, details.url, undefined, details.timeStamp);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
