@@ -4,6 +4,7 @@ export type ScenarioStepType =
   | "click"
   | "fill"
   | "select"
+  | "submit"
   | "navigation"
   | "goto"
   | "wait"

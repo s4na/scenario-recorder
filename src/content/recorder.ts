@@ -131,6 +131,10 @@ function isFileInput(element: HTMLElement): element is HTMLInputElement {
   return element instanceof HTMLInputElement && element.type === "file";
 }
 
+function isHiddenInput(element: HTMLElement): element is HTMLInputElement {
+  return element instanceof HTMLInputElement && element.type === "hidden";
+}
+
 function isToggleInput(element: HTMLElement): element is HTMLInputElement {
   return (
     element instanceof HTMLInputElement &&
@@ -186,6 +190,9 @@ async function flushAndRecordClick(
   onStep: StepHandler,
 ): Promise<void> {
   if (!isRecording()) {
+    return;
+  }
+  if (!event.isTrusted) {
     return;
   }
   if (
@@ -256,7 +263,7 @@ function getActivationDetails(event: Event): ActivationDetails | undefined {
     return undefined;
   }
   return {
-    replayTarget: target,
+    replayTarget: activationTarget,
   };
 }
 
@@ -281,28 +288,47 @@ async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promi
     await flushPendingInputs(onStep);
     return;
   }
-  if (
-    replayingSubmits.has(form) ||
-    (pendingInputs.size === 0 && !activeFlush) ||
-    !event.cancelable
-  ) {
+  if (replayingSubmits.has(form)) {
     replayingSubmits.delete(form);
+    return;
+  }
+  if (!event.cancelable) {
+    await recordSubmit(form, onStep);
     return;
   }
   event.preventDefault();
   event.stopImmediatePropagation();
-  await flushTrackedPendingInputs(onStep, { throwOnError: true }).then(() => {
-    const submitter =
-      event.submitter instanceof HTMLElement ? event.submitter : undefined;
-    replayFormSubmit(form, submitter);
-  }).catch((error: unknown) => {
+  const submitter =
+    event.submitter instanceof HTMLElement ? event.submitter : undefined;
+  if (
+    pendingInputs.size > 0 ||
+    activeFlush
+  ) {
+    await flushTrackedPendingInputs(onStep, { throwOnError: true }).catch((error: unknown) => {
+      console.warn(
+        "Scenario Recorder could not flush pending input before form submit.",
+        error,
+      );
+    });
+  }
+  await recordSubmit(form, onStep).catch((error: unknown) => {
     console.warn(
-      "Scenario Recorder could not flush pending input before form submit.",
+      "Scenario Recorder could not record form submit.",
       error,
     );
-    const submitter =
-      event.submitter instanceof HTMLElement ? event.submitter : undefined;
+  }).finally(() => {
     replayFormSubmit(form, submitter);
+  });
+}
+
+async function recordSubmit(
+  form: HTMLFormElement,
+  onStep: StepHandler,
+): Promise<void> {
+  await onStep({
+    id: createStepId(),
+    ...createBaseStep("submit"),
+    target: createTargetSnapshot(form),
   });
 }
 
@@ -456,6 +482,9 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "click",
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
       void flushAndRecordClick(event, onStep);
     },
     true,
@@ -464,11 +493,15 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "input",
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
       const target = getComposedElement(event);
       if (
         (target instanceof HTMLInputElement ||
           target instanceof HTMLTextAreaElement) &&
         !isFileInput(target) &&
+        !isHiddenInput(target) &&
         !isToggleInput(target)
       ) {
         scheduleFill(target, onStep);
@@ -480,6 +513,9 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "change",
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
       const target = getComposedElement(event);
       if (target instanceof HTMLSelectElement) {
         recordSelect(target, onStep);
@@ -487,6 +523,7 @@ export function installRecorder(onStep: StepHandler): void {
         target instanceof HTMLElement &&
         isFillInput(target) &&
         !isFileInput(target) &&
+        !isHiddenInput(target) &&
         !isToggleInput(target)
       ) {
         scheduleFill(target, onStep);
@@ -498,6 +535,9 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "submit",
     (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
       void flushBeforeSubmit(event, onStep);
     },
     true,
