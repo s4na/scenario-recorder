@@ -363,7 +363,7 @@ export function installRecorder(onStep: StepHandler): void {
 
 export async function flushPendingInputs(onStep: StepHandler, options: FlushOptions = {}): Promise<void> {
   const pendingElements = Array.from(inputTimers.keys());
-  const sends: Array<Promise<void>> = [];
+  const sends: Array<{ element: HTMLInputElement | HTMLTextAreaElement; send: Promise<void> }> = [];
   for (const element of pendingElements) {
     const timer = inputTimers.get(element);
     if (timer) {
@@ -373,23 +373,59 @@ export async function flushPendingInputs(onStep: StepHandler, options: FlushOpti
     if (isDisabledElement(element) || !isRecording()) {
       continue;
     }
-    sends.push(
-      Promise.resolve().then(() =>
-        onStep({
+    sends.push({
+      element,
+      send: new Promise<void>((resolve, reject) => {
+        try {
+          Promise.resolve(
+            onStep({
+              id: createStepId(),
+              ...createBaseStep("fill"),
+              target: createTargetSnapshot(element),
+              value: maskValue(element, getInputValue(element)),
+            }),
+          ).then(resolve, reject);
+        } catch (error) {
+          reject(error);
+        }
+      }),
+    });
+  }
+  const results = await Promise.allSettled(sends.map(({ send }) => send));
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  restoreFailedPendingInputs(sends, results, onStep);
+  if (!options.throwOnError) {
+    return;
+  }
+  if (failure) {
+    throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
+  }
+}
+
+function restoreFailedPendingInputs(
+  sends: Array<{ element: HTMLInputElement | HTMLTextAreaElement; send: Promise<void> }>,
+  results: Array<PromiseSettledResult<void>>,
+  onStep: StepHandler,
+): void {
+  for (let index = 0; index < sends.length; index += 1) {
+    if (results[index]?.status !== "rejected") {
+      continue;
+    }
+    const element = sends[index].element;
+    inputTimers.set(
+      element,
+      window.setTimeout(() => {
+        inputTimers.delete(element);
+        if (isDisabledElement(element) || !isRecording()) {
+          return;
+        }
+        void onStep({
           id: createStepId(),
           ...createBaseStep("fill"),
           target: createTargetSnapshot(element),
           value: maskValue(element, getInputValue(element)),
-        }),
-      ).then(() => undefined),
+        });
+      }, INPUT_DEBOUNCE_MS),
     );
-  }
-  const results = await Promise.allSettled(sends);
-  if (!options.throwOnError) {
-    return;
-  }
-  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
-  if (failure) {
-    throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
   }
 }
