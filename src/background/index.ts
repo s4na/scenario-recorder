@@ -403,13 +403,6 @@ chrome.runtime.onMessage.addListener(
 
 async function initializeTabUrls(): Promise<void> {
   await loadTabUrls();
-  const tabs = await chrome.tabs.query({});
-  for (const tab of tabs) {
-    if (tab.id !== undefined && tab.url && !tabUrls.has(tab.id)) {
-      tabUrls.set(tab.id, tab.url);
-    }
-  }
-  await saveTabUrls();
 }
 
 chrome.webNavigation.onCommitted.addListener((details) => {

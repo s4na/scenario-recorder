@@ -357,11 +357,6 @@ function getNavigationClickTarget(event: MouseEvent): HTMLElement | undefined {
   if (submitter instanceof HTMLInputElement && submitter.type === "submit") {
     return submitter;
   }
-  if (pendingInputs.size > 0) {
-    return targetElement.closest<HTMLElement>(
-      "button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]",
-    ) ?? targetElement;
-  }
   return undefined;
 }
 
@@ -570,11 +565,7 @@ function restoreFailedPendingInputs(
       step,
     };
     pending.timer = window.setTimeout(() => {
-      pendingInputs.delete(element);
-      if (isDisabledElement(element) || !isRecording()) {
-        return;
-      }
-      void sendPendingStepWithRestore(element, pending, onStep);
+      void flushPendingInputs(onStep);
     }, INPUT_DEBOUNCE_MS);
     pendingInputs.set(element, pending);
   }
@@ -590,11 +581,7 @@ async function sendPendingStepWithRestore(
   } catch {
     if (!pendingInputs.has(element)) {
       const timer = window.setTimeout(() => {
-        pendingInputs.delete(element);
-        if (isDisabledElement(element) || !isRecording()) {
-          return;
-        }
-        void sendPendingStepWithRestore(element, { ...pending, timer }, onStep);
+        void flushPendingInputs(onStep);
       }, INPUT_DEBOUNCE_MS);
       pendingInputs.set(element, { ...pending, timer });
     }
