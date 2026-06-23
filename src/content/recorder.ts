@@ -146,9 +146,13 @@ function sanitizeHash(hash: string): string {
   }
   const rawHash = hash.slice(1);
   const queryIndex = rawHash.indexOf("?");
+  const hashPath = queryIndex >= 0 ? rawHash.slice(0, queryIndex) : rawHash;
+  if (shouldRedactHashPath(hashPath)) {
+    return "#{{SECRET}}";
+  }
   const paramText = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash;
   if (!paramText.includes("=")) {
-    return shouldRedactHashPath(rawHash) ? "#{{SECRET}}" : hash;
+    return hash;
   }
   const hashParams = new URLSearchParams(paramText);
   let changed = false;
@@ -474,7 +478,8 @@ function restoreFailedPendingInputs(
   onStep: StepHandler,
 ): void {
   for (let index = 0; index < sends.length; index += 1) {
-    if (results[index]?.status !== "rejected") {
+    const result = results[index];
+    if (result?.status === "fulfilled") {
       continue;
     }
     const element = sends[index].element;
