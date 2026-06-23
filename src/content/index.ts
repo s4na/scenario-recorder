@@ -152,10 +152,11 @@ chrome.runtime.onMessage.addListener((message: ContentMessage, _sender, sendResp
 });
 
 watchNavigation((fromUrl, toUrl) => {
-  void isRecording().then((recording) => {
+  void isRecording().then(async (recording) => {
     if (!recording) {
       return;
     }
+    await flushPendingInputs(sendStep);
     sendStep({
       id: createStepId(),
       type: "navigation",

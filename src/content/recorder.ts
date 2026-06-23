@@ -8,6 +8,7 @@ const INPUT_DEBOUNCE_MS = 300;
 const inputTimers = new Map<HTMLInputElement | HTMLTextAreaElement, number>();
 let lastClickSignature = "";
 let lastClickTimestamp = 0;
+let cachedRecording = false;
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -16,10 +17,27 @@ function createStepId(): string {
     .join("")}`;
 }
 
-async function isRecording(): Promise<boolean> {
-  const state = await chrome.storage.local.get("scenarioRecorder.recorderState");
-  const recorderState = state["scenarioRecorder.recorderState"] as { status?: string } | undefined;
-  return recorderState?.status === "recording";
+function updateCachedRecording(state: unknown): void {
+  const recorderState = (state as Record<string, { status?: string } | undefined>)[
+    "scenarioRecorder.recorderState"
+  ];
+  cachedRecording = recorderState?.status === "recording";
+}
+
+function initializeRecordingCache(): void {
+  void chrome.storage.local.get("scenarioRecorder.recorderState").then(updateCachedRecording);
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes["scenarioRecorder.recorderState"]) {
+      return;
+    }
+    updateCachedRecording({
+      "scenarioRecorder.recorderState": changes["scenarioRecorder.recorderState"].newValue
+    });
+  });
+}
+
+function isRecording(): boolean {
+  return cachedRecording;
 }
 
 function sanitizeUrl(rawUrl: string): string {
@@ -185,7 +203,7 @@ function getComposedElement(event: Event): HTMLElement | undefined {
   return event.composedPath().find((item): item is HTMLElement => item instanceof HTMLElement);
 }
 
-async function recordClick(event: MouseEvent, onStep: StepHandler): Promise<void> {
+function recordClick(event: MouseEvent, onStep: StepHandler): void {
   const targetElement = getComposedElement(event);
   if (!targetElement) {
     return;
@@ -195,7 +213,7 @@ async function recordClick(event: MouseEvent, onStep: StepHandler): Promise<void
     targetElement.closest<HTMLElement>(
       "button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]"
     ) ?? targetElement;
-  if (isDisabledElement(target) || !(await isRecording())) {
+  if (isDisabledElement(target) || !isRecording()) {
     return;
   }
 
@@ -225,7 +243,7 @@ function scheduleFill(
 
   const timer = window.setTimeout(async () => {
     inputTimers.delete(element);
-    if (isDisabledElement(element) || !(await isRecording())) {
+    if (isDisabledElement(element) || !isRecording()) {
       return;
     }
     void onStep({
@@ -239,8 +257,8 @@ function scheduleFill(
   inputTimers.set(element, timer);
 }
 
-async function recordSelect(element: HTMLSelectElement, onStep: StepHandler): Promise<void> {
-  if (isDisabledElement(element) || !(await isRecording())) {
+function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
+  if (isDisabledElement(element) || !isRecording()) {
     return;
   }
   void onStep({
@@ -252,10 +270,11 @@ async function recordSelect(element: HTMLSelectElement, onStep: StepHandler): Pr
 }
 
 export function installRecorder(onStep: StepHandler): void {
+  initializeRecordingCache();
   document.addEventListener(
     "click",
     (event) => {
-      void recordClick(event, onStep);
+      recordClick(event, onStep);
     },
     true
   );
@@ -276,31 +295,37 @@ export function installRecorder(onStep: StepHandler): void {
     (event) => {
       const target = getComposedElement(event);
       if (target instanceof HTMLSelectElement) {
-        void recordSelect(target, onStep);
+        recordSelect(target, onStep);
       } else if (target instanceof HTMLElement && isFillInput(target) && !isFileInput(target)) {
         scheduleFill(target, onStep);
       }
     },
     true
   );
+
+  window.addEventListener("pagehide", () => {
+    void flushPendingInputs(onStep);
+  });
 }
 
 export async function flushPendingInputs(onStep: StepHandler): Promise<void> {
   const pendingElements = Array.from(inputTimers.keys());
+  const sends: Array<void | Promise<void>> = [];
   for (const element of pendingElements) {
     const timer = inputTimers.get(element);
     if (timer) {
       window.clearTimeout(timer);
     }
     inputTimers.delete(element);
-    if (isDisabledElement(element) || !(await isRecording())) {
+    if (isDisabledElement(element) || !isRecording()) {
       continue;
     }
-    await onStep({
+    sends.push(onStep({
       id: createStepId(),
       ...createBaseStep("fill"),
       target: createTargetSnapshot(element),
       value: maskValue(element, getInputValue(element))
-    });
+    }));
   }
+  await Promise.allSettled(sends);
 }

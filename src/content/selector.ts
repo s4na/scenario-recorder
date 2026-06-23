@@ -6,6 +6,7 @@ const SECRET_TEXT_PATTERNS = [
   /sk_(live|test)_[A-Za-z0-9_=-]+/gi,
   /bearer\s+[A-Za-z0-9._~+/=-]+/gi,
   /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+  /\b(?:access[_-]?token|api[_-]?key|client[_-]?secret|id[_-]?token|refresh[_-]?token|secret|token|password|otp|credential|authorization|session|signature|ticket|auth[_-]?code|verification[_-]?code|reset[_-]?code|one[_-]?time[_-]?code)[_-][A-Za-z0-9._~+/=-]+/gi,
   /\b(?:access[_-]?token|api[_-]?key|client[_-]?secret|id[_-]?token|refresh[_-]?token|secret|token|password|otp|credential|authorization|session|signature|ticket|code)[=:]\s*(?:bearer\s+)?[^"'&<>]+/gi
 ];
 

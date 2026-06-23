@@ -38,6 +38,9 @@ async function startRecording(): Promise<RecorderState> {
     if (currentState.status !== "idle") {
       return currentState;
     }
+    if (currentState.currentSteps.length > 0) {
+      throw new Error("Save or clear the current recording before starting a new one.");
+    }
     const now = toIsoNow();
     const state: RecorderState = {
       status: "recording",
