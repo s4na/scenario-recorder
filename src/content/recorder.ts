@@ -6,9 +6,17 @@ type StepHandler = (step: ScenarioStep) => void | Promise<void>;
 type FlushOptions = {
   throwOnError?: boolean;
 };
+type StepContext = {
+  url: string;
+  title: string;
+};
+type PendingInput = {
+  timer: number;
+  context: StepContext;
+};
 
 const INPUT_DEBOUNCE_MS = 300;
-const inputTimers = new Map<HTMLInputElement | HTMLTextAreaElement, number>();
+const pendingInputs = new Map<HTMLInputElement | HTMLTextAreaElement, PendingInput>();
 let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let cachedRecording = false;
@@ -68,7 +76,7 @@ function sanitizeUrl(rawUrl: string): string {
 }
 
 function isSecretUrlKey(key: string): boolean {
-  const normalized = key.toLowerCase().replace(/[-.]/g, "_");
+  const normalized = normalizeUrlKey(key);
   return [
     "access_token",
     "api_key",
@@ -93,6 +101,13 @@ function isSecretUrlKey(key: string): boolean {
     (secretKey) =>
       normalized === secretKey || normalized.endsWith(`_${secretKey}`),
   );
+}
+
+function normalizeUrlKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[-.]/g, "_");
 }
 
 const SECRET_PATH_MARKERS = [
@@ -193,12 +208,19 @@ function isDisabledElement(element: HTMLElement): boolean {
   );
 }
 
-function createBaseStep(type: ScenarioStep["type"]): Omit<ScenarioStep, "id"> {
+function createStepContext(): StepContext {
+  return {
+    url: sanitizeUrl(location.href),
+    title: document.title,
+  };
+}
+
+function createBaseStep(type: ScenarioStep["type"], context = createStepContext()): Omit<ScenarioStep, "id"> {
   return {
     type,
     timestamp: Date.now(),
-    url: sanitizeUrl(location.href),
-    title: document.title,
+    url: context.url,
+    title: context.title,
   };
 }
 
@@ -272,25 +294,26 @@ function scheduleFill(
   element: HTMLInputElement | HTMLTextAreaElement,
   onStep: StepHandler,
 ): void {
-  const oldTimer = inputTimers.get(element);
-  if (oldTimer) {
-    window.clearTimeout(oldTimer);
+  const oldPending = pendingInputs.get(element);
+  if (oldPending) {
+    window.clearTimeout(oldPending.timer);
   }
+  const context = createStepContext();
 
   const timer = window.setTimeout(async () => {
-    inputTimers.delete(element);
+    pendingInputs.delete(element);
     if (isDisabledElement(element) || !isRecording()) {
       return;
     }
     void onStep({
       id: createStepId(),
-      ...createBaseStep("fill"),
+      ...createBaseStep("fill", context),
       target: createTargetSnapshot(element),
       value: maskValue(element, getInputValue(element)),
     });
   }, INPUT_DEBOUNCE_MS);
 
-  inputTimers.set(element, timer);
+  pendingInputs.set(element, { timer, context });
 }
 
 function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
@@ -362,25 +385,27 @@ export function installRecorder(onStep: StepHandler): void {
 }
 
 export async function flushPendingInputs(onStep: StepHandler, options: FlushOptions = {}): Promise<void> {
-  const pendingElements = Array.from(inputTimers.keys());
-  const sends: Array<{ element: HTMLInputElement | HTMLTextAreaElement; send: Promise<void> }> = [];
-  for (const element of pendingElements) {
-    const timer = inputTimers.get(element);
-    if (timer) {
-      window.clearTimeout(timer);
-    }
-    inputTimers.delete(element);
+  const pendingEntries = Array.from(pendingInputs.entries());
+  const sends: Array<{
+    element: HTMLInputElement | HTMLTextAreaElement;
+    context: StepContext;
+    send: Promise<void>;
+  }> = [];
+  for (const [element, pending] of pendingEntries) {
+    window.clearTimeout(pending.timer);
+    pendingInputs.delete(element);
     if (isDisabledElement(element) || !isRecording()) {
       continue;
     }
     sends.push({
       element,
+      context: pending.context,
       send: new Promise<void>((resolve, reject) => {
         try {
           Promise.resolve(
             onStep({
               id: createStepId(),
-              ...createBaseStep("fill"),
+              ...createBaseStep("fill", pending.context),
               target: createTargetSnapshot(element),
               value: maskValue(element, getInputValue(element)),
             }),
@@ -403,7 +428,11 @@ export async function flushPendingInputs(onStep: StepHandler, options: FlushOpti
 }
 
 function restoreFailedPendingInputs(
-  sends: Array<{ element: HTMLInputElement | HTMLTextAreaElement; send: Promise<void> }>,
+  sends: Array<{
+    element: HTMLInputElement | HTMLTextAreaElement;
+    context: StepContext;
+    send: Promise<void>;
+  }>,
   results: Array<PromiseSettledResult<void>>,
   onStep: StepHandler,
 ): void {
@@ -412,20 +441,22 @@ function restoreFailedPendingInputs(
       continue;
     }
     const element = sends[index].element;
-    inputTimers.set(
+    const context = sends[index].context;
+    const timer = window.setTimeout(() => {
+      pendingInputs.delete(element);
+      if (isDisabledElement(element) || !isRecording()) {
+        return;
+      }
+      void onStep({
+        id: createStepId(),
+        ...createBaseStep("fill", context),
+        target: createTargetSnapshot(element),
+        value: maskValue(element, getInputValue(element)),
+      });
+    }, INPUT_DEBOUNCE_MS);
+    pendingInputs.set(
       element,
-      window.setTimeout(() => {
-        inputTimers.delete(element);
-        if (isDisabledElement(element) || !isRecording()) {
-          return;
-        }
-        void onStep({
-          id: createStepId(),
-          ...createBaseStep("fill"),
-          target: createTargetSnapshot(element),
-          value: maskValue(element, getInputValue(element)),
-        });
-      }, INPUT_DEBOUNCE_MS),
+      { timer, context },
     );
   }
 }

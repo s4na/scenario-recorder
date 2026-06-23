@@ -8,10 +8,11 @@ import {
   setRecorderState
 } from "../shared/storage";
 import type { RecorderState, Scenario, ScenarioExport, ScenarioStep } from "../shared/types";
-import { createId, sanitizeUrl, shouldReplaceFillStep, toIsoNow } from "../shared/utils";
+import { createId, createStepId, sanitizeUrl, shouldReplaceFillStep, toIsoNow } from "../shared/utils";
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 let stateMutationQueue: Promise<unknown> = Promise.resolve();
+const tabUrls = new Map<number, string>();
 
 function enqueueStateMutation<T>(mutation: () => Promise<T>): Promise<T> {
   const next = stateMutationQueue.catch(() => undefined).then(mutation);
@@ -23,6 +24,10 @@ function withUpdatedStep(state: RecorderState, step: ScenarioStep): RecorderStat
   const currentSteps = [...state.currentSteps];
   const lastStep = currentSteps[currentSteps.length - 1];
 
+  if (isDuplicateNavigationStep(lastStep, step)) {
+    return state;
+  }
+
   if (lastStep && shouldReplaceFillStep(lastStep, step)) {
     currentSteps[currentSteps.length - 1] = step;
   } else {
@@ -30,6 +35,16 @@ function withUpdatedStep(state: RecorderState, step: ScenarioStep): RecorderStat
   }
 
   return { ...state, currentSteps };
+}
+
+function isDuplicateNavigationStep(previous: ScenarioStep | undefined, next: ScenarioStep): boolean {
+  return (
+    previous?.type === "navigation" &&
+    next.type === "navigation" &&
+    previous.fromUrl === next.fromUrl &&
+    previous.toUrl === next.toUrl &&
+    Math.abs(previous.timestamp - next.timestamp) < 1000
+  );
 }
 
 async function startRecording(): Promise<RecorderState> {
@@ -113,6 +128,27 @@ async function recordStep(step: ScenarioStep): Promise<RecorderState> {
     await setRecorderState(nextState);
     return nextState;
   });
+}
+
+async function recordTabNavigation(tabId: number, toUrl: string, title?: string): Promise<void> {
+  const fromUrl = tabUrls.get(tabId);
+  tabUrls.set(tabId, toUrl);
+  if (!fromUrl || fromUrl === toUrl || !isHttpUrl(toUrl)) {
+    return;
+  }
+  await recordStep({
+    id: createStepId(),
+    type: "navigation",
+    timestamp: Date.now(),
+    url: sanitizeUrl(toUrl),
+    title,
+    fromUrl: sanitizeUrl(fromUrl),
+    toUrl: sanitizeUrl(toUrl)
+  });
+}
+
+function isHttpUrl(url: string): boolean {
+  return url.startsWith("http://") || url.startsWith("https://");
 }
 
 function createScenario(name: string, state: RecorderState): Scenario {
@@ -261,3 +297,26 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     });
   return true;
 });
+
+function seedExistingTabUrls(): void {
+  void chrome.tabs.query({}).then((tabs) => {
+    for (const tab of tabs) {
+      if (tab.id !== undefined && tab.url) {
+        tabUrls.set(tab.id, tab.url);
+      }
+    }
+  });
+}
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) {
+    return;
+  }
+  void recordTabNavigation(details.tabId, details.url);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  tabUrls.delete(tabId);
+});
+
+seedExistingTabUrls();

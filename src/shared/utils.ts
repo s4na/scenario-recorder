@@ -132,8 +132,15 @@ export function sanitizeUrl(rawUrl: string): string {
 }
 
 function isSecretUrlKey(key: string): boolean {
-  const normalized = key.toLowerCase().replace(/[-.]/g, "_");
+  const normalized = normalizeUrlKey(key);
   return SECRET_URL_KEYS.some((secretKey) => normalized === secretKey || normalized.endsWith(`_${secretKey}`));
+}
+
+function normalizeUrlKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[-.]/g, "_");
 }
 
 function sanitizeHash(hash: string): string {

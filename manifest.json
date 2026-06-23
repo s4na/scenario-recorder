@@ -3,7 +3,7 @@
   "name": "シナリオレコーダー",
   "description": "Webアプリ上の操作をJSONシナリオとして記録するChrome拡張です。",
   "version": "0.1.0",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "index.html",

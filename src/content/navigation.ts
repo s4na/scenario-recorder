@@ -51,11 +51,6 @@ export function watchNavigation(onNavigation: NavigationHandler): void {
     emitNavigation(detail.fromUrl, detail.toUrl);
   });
 
-  const referrer = document.referrer;
-  if (referrer && referrer !== location.href) {
-    queueMicrotask(() => emitNavigation(referrer, location.href));
-  }
-
   window.addEventListener("popstate", () => notifyIfChanged());
   window.addEventListener("hashchange", () => notifyIfChanged());
 }

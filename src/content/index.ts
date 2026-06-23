@@ -42,7 +42,7 @@ function sanitizeUrl(rawUrl: string): string {
 }
 
 function isSecretUrlKey(key: string): boolean {
-  const normalized = key.toLowerCase().replace(/[-.]/g, "_");
+  const normalized = normalizeUrlKey(key);
   return [
     "access_token",
     "api_key",
@@ -67,6 +67,13 @@ function isSecretUrlKey(key: string): boolean {
     (secretKey) =>
       normalized === secretKey || normalized.endsWith(`_${secretKey}`),
   );
+}
+
+function normalizeUrlKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[-.]/g, "_");
 }
 
 const SECRET_PATH_MARKERS = [
