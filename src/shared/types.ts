@@ -112,4 +112,7 @@ export type RecorderState = {
   pausedAt?: string;
   resumedAt?: string;
   stoppedAt?: string;
+  targetTabId?: number;
+  targetWindowId?: number;
+  startedAtMs?: number;
 };

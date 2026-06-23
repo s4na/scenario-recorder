@@ -127,6 +127,13 @@ function isFileInput(element: HTMLElement): element is HTMLInputElement {
   return element instanceof HTMLInputElement && element.type === "file";
 }
 
+function isToggleInput(element: HTMLElement): element is HTMLInputElement {
+  return (
+    element instanceof HTMLInputElement &&
+    (element.type === "checkbox" || element.type === "radio")
+  );
+}
+
 function getComposedElement(event: Event): HTMLElement | undefined {
   return event
     .composedPath()
@@ -308,6 +315,7 @@ function scheduleFill(
   element: HTMLInputElement | HTMLTextAreaElement,
   onStep: StepHandler,
 ): void {
+  const value = maskValue(element, getInputValue(element));
   const oldPending = pendingInputs.get(element);
   if (oldPending) {
     window.clearTimeout(oldPending.timer);
@@ -320,7 +328,7 @@ function scheduleFill(
     id: createStepId(),
     ...createBaseStep("fill", context),
     target: createTargetSnapshot(element),
-    value: maskValue(element, getInputValue(element)),
+    value,
   };
 
   const timer = window.setTimeout(async () => {
@@ -389,7 +397,8 @@ export function installRecorder(onStep: StepHandler): void {
       if (
         (target instanceof HTMLInputElement ||
           target instanceof HTMLTextAreaElement) &&
-        !isFileInput(target)
+        !isFileInput(target) &&
+        !isToggleInput(target)
       ) {
         scheduleFill(target, onStep);
       }
@@ -406,7 +415,8 @@ export function installRecorder(onStep: StepHandler): void {
       } else if (
         target instanceof HTMLElement &&
         isFillInput(target) &&
-        !isFileInput(target)
+        !isFileInput(target) &&
+        !isToggleInput(target)
       ) {
         scheduleFill(target, onStep);
       }

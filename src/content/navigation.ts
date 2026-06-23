@@ -38,11 +38,10 @@ export function watchNavigation(onNavigation: NavigationHandler): void {
   };
 
   window.addEventListener(MAIN_WORLD_EVENT, (event) => {
-    if (!(event instanceof CustomEvent)) {
-      return;
-    }
-    const detail = event.detail as { fromUrl?: string; toUrl?: string } | undefined;
-    if (!detail?.fromUrl || !detail.toUrl) {
+    const detail = (event as CustomEvent<unknown>).detail as
+      | { fromUrl?: unknown; toUrl?: unknown }
+      | undefined;
+    if (typeof detail?.fromUrl !== "string" || typeof detail.toUrl !== "string") {
       return;
     }
     if (detail.toUrl !== location.href) {

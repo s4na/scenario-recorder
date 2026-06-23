@@ -86,8 +86,10 @@ function containsJwt(value: string): boolean {
 
 function isSecretUrlKey(key: string): boolean {
   const normalized = normalizeUrlKey(key);
-  return SECRET_URL_KEYS.some(
-    (secretKey) => normalized === secretKey || normalized.endsWith(`_${secretKey}`),
+  return normalized.split(/[/?#&;=]+/).some((part) =>
+    SECRET_URL_KEYS.some(
+      (secretKey) => part === secretKey || part.endsWith(`_${secretKey}`),
+    ),
   );
 }
 

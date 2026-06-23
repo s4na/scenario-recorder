@@ -79,13 +79,17 @@ async function startRecording(): Promise<RecorderState> {
         "Save or clear the current recording before starting a new one.",
       );
     }
-    await seedActiveTabUrl();
+    const activeTab = await seedActiveTabUrl();
+    await injectRecorderIntoTab(activeTab);
     const now = toIsoNow();
     const state: RecorderState = {
       status: "recording",
       currentSteps: [],
       recordingSessions: [{ startedAt: now }],
       startedAt: now,
+      startedAtMs: Date.now(),
+      targetTabId: activeTab?.id,
+      targetWindowId: activeTab?.windowId,
     };
     await setRecorderState(state);
     return state;
@@ -124,6 +128,7 @@ async function resumeRecording(): Promise<RecorderState> {
       ...state,
       status: "recording" as const,
       resumedAt: now,
+      startedAtMs: Date.now(),
       recordingSessions: [...state.recordingSessions, { resumedAt: now }],
     };
     await setRecorderState(nextState);
@@ -156,18 +161,17 @@ async function recordStep(
   step: ScenarioStep,
   senderTabId?: number,
 ): Promise<RecorderState> {
-  if (senderTabId !== undefined) {
-    await tabUrlsReady;
-    await updateTabUrlFromStep(senderTabId, step);
-  }
-  return appendStep(step);
-}
-
-async function appendStep(step: ScenarioStep): Promise<RecorderState> {
+  await tabUrlsReady;
   return enqueueStateMutation(async () => {
     const state = await getRecorderState();
-    if (state.status !== "recording") {
+    if (
+      state.status !== "recording" ||
+      (senderTabId !== undefined && state.targetTabId !== senderTabId)
+    ) {
       return state;
+    }
+    if (senderTabId !== undefined) {
+      await updateTabUrlFromStep(senderTabId, step);
     }
     const nextState = withUpdatedStep(state, sanitizeStepUrls(step));
     await setRecorderState(nextState);
@@ -208,7 +212,8 @@ async function recordTabNavigation(
   const state = await getRecorderState();
   if (
     state.status !== "recording" ||
-    timestamp < getActiveSessionStartedAt(state)
+    state.targetTabId !== tabId ||
+    timestamp < getActiveSessionStartedAtMs(state)
   ) {
     await setTabUrl(tabId, sanitizedToUrl);
     return;
@@ -224,11 +229,8 @@ async function recordTabNavigation(
   }, tabId);
 }
 
-function getActiveSessionStartedAt(state: RecorderState): number {
-  const session = state.recordingSessions[state.recordingSessions.length - 1];
-  return Date.parse(
-    session?.resumedAt ?? session?.startedAt ?? state.startedAt ?? "1970-01-01T00:00:00.000Z",
-  );
+function getActiveSessionStartedAtMs(state: RecorderState): number {
+  return state.startedAtMs ?? 0;
 }
 
 function isHttpUrl(url: string): boolean {
@@ -245,11 +247,39 @@ async function deleteTabUrl(tabId: number): Promise<void> {
   await enqueueTabUrlsSave();
 }
 
-async function seedActiveTabUrl(): Promise<void> {
+async function seedActiveTabUrl(): Promise<chrome.tabs.Tab | undefined> {
   await tabUrlsReady;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id !== undefined && tab.url) {
     await setTabUrl(tab.id, tab.url);
+  }
+  return tab;
+}
+
+async function injectRecorderIntoTab(tab: chrome.tabs.Tab | undefined): Promise<void> {
+  if (tab?.id === undefined || !tab.url || !isHttpUrl(tab.url)) {
+    return;
+  }
+  if (await isRecorderContentAvailable(tab.id)) {
+    return;
+  }
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ["assets/mainWorldNavigation.js"],
+    world: "MAIN",
+  });
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ["assets/content.js"],
+  });
+}
+
+async function isRecorderContentAvailable(tabId: number): Promise<boolean> {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "FLUSH_PENDING_INPUTS" });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -456,7 +486,9 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) {
     return;
   }
-  void recordTabNavigation(details.tabId, details.url);
+  void recordTabNavigation(details.tabId, details.url).catch((error: unknown) => {
+    console.warn("Scenario Recorder failed to record tab navigation.", error);
+  });
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
