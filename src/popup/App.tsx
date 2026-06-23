@@ -29,7 +29,8 @@ function isContentScriptUnavailableError(message: string): boolean {
   return (
     message.includes("Could not establish connection") ||
     message.includes("Receiving end does not exist") ||
-    message.includes("Cannot access")
+    message.includes("Cannot access") ||
+    message.includes("No tab with id")
   );
 }
 
@@ -85,13 +86,17 @@ export default function App() {
   }
 
   async function flushActiveTabInputs(): Promise<void> {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab.id) {
+    let tabId = state.targetTabId;
+    if (tabId === undefined) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tab.id;
+    }
+    if (tabId === undefined) {
       return;
     }
     try {
       const message: ContentMessage<"FLUSH_PENDING_INPUTS"> = { type: "FLUSH_PENDING_INPUTS" };
-      const response = await chrome.tabs.sendMessage(tab.id, message);
+      const response = await chrome.tabs.sendMessage(tabId, message);
       if (response && typeof response === "object" && "error" in response) {
         throw new Error(String(response.error));
       }
