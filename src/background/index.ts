@@ -177,7 +177,7 @@ async function recordTabNavigation(
   await tabUrlsReady;
   const fromUrl = tabUrls.get(tabId);
   await setTabUrl(tabId, toUrl);
-  if (!fromUrl || fromUrl === toUrl || !isHttpUrl(toUrl)) {
+  if (!isHttpUrl(toUrl) || fromUrl === toUrl) {
     return;
   }
   await delay(NAVIGATION_RECORD_DELAY_MS);
@@ -187,7 +187,7 @@ async function recordTabNavigation(
     timestamp: Date.now(),
     url: sanitizeUrl(toUrl),
     title,
-    fromUrl: sanitizeUrl(fromUrl),
+    fromUrl: sanitizeOptionalUrl(fromUrl),
     toUrl: sanitizeUrl(toUrl),
   });
 }

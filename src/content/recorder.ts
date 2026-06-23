@@ -31,6 +31,8 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let cachedRecording = false;
 let pendingInputSequence = 0;
+const replayedClicks = new WeakSet<HTMLElement>();
+const replayedSubmits = new WeakSet<HTMLFormElement>();
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -311,6 +313,61 @@ function recordClick(event: MouseEvent, onStep: StepHandler): void {
   });
 }
 
+async function flushAndRecordClick(event: MouseEvent, onStep: StepHandler): Promise<void> {
+  const navigationTarget = getNavigationClickTarget(event);
+  if (navigationTarget && !replayedClicks.has(navigationTarget)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try {
+      await flushPendingInputs(onStep, { throwOnError: true });
+      recordClick(event, onStep);
+      replayedClicks.add(navigationTarget);
+      navigationTarget.click();
+    } catch (error) {
+      console.warn("Scenario Recorder skipped navigation click because pending input flush failed.", error);
+    }
+    return;
+  }
+  await flushPendingInputs(onStep, { throwOnError: true });
+  recordClick(event, onStep);
+}
+
+function getNavigationClickTarget(event: MouseEvent): HTMLElement | undefined {
+  const targetElement = getComposedElement(event);
+  if (!targetElement) {
+    return undefined;
+  }
+  const link = targetElement.closest<HTMLAnchorElement>("a[href]");
+  if (link && link.target !== "_blank" && link.href && link.href !== location.href) {
+    return link;
+  }
+  const submitter = targetElement.closest<HTMLElement>("button,input");
+  if (submitter instanceof HTMLButtonElement && submitter.type === "submit") {
+    return submitter;
+  }
+  if (submitter instanceof HTMLInputElement && submitter.type === "submit") {
+    return submitter;
+  }
+  return undefined;
+}
+
+async function flushAndReplaySubmit(event: SubmitEvent, onStep: StepHandler): Promise<void> {
+  const form = event.target instanceof HTMLFormElement ? event.target : undefined;
+  if (!form || replayedSubmits.has(form)) {
+    await flushPendingInputs(onStep);
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  try {
+    await flushPendingInputs(onStep, { throwOnError: true });
+    replayedSubmits.add(form);
+    form.requestSubmit();
+  } catch (error) {
+    console.warn("Scenario Recorder skipped form submit because pending input flush failed.", error);
+  }
+}
+
 function scheduleFill(
   element: HTMLInputElement | HTMLTextAreaElement,
   onStep: StepHandler,
@@ -358,14 +415,7 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "click",
     (event) => {
-      void flushPendingInputs(onStep, { throwOnError: true })
-        .then(() => recordClick(event, onStep))
-        .catch((error: unknown) => {
-          console.warn(
-            "Scenario Recorder skipped click because pending input flush failed.",
-            error,
-          );
-        });
+      void flushAndRecordClick(event, onStep);
     },
     true,
   );
@@ -404,8 +454,8 @@ export function installRecorder(onStep: StepHandler): void {
 
   document.addEventListener(
     "submit",
-    () => {
-      void flushPendingInputs(onStep);
+    (event) => {
+      void flushAndReplaySubmit(event, onStep);
     },
     true,
   );
