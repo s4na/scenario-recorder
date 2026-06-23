@@ -27,7 +27,9 @@ const SECRET_MARKER_PATTERNS = [
   /(^|[^a-z0-9])cvc([^a-z0-9]|$)/,
   /(^|[^a-z0-9])cvccode([^a-z0-9]|$)/,
   /(^|[^a-z0-9])cvv([^a-z0-9]|$)/,
-  /(^|[^a-z0-9])cvvcode([^a-z0-9]|$)/
+  /(^|[^a-z0-9])cvvcode([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])security[_\s-]*code([^a-z0-9]|$)/,
+  /(^|[^a-z0-9])securitycode([^a-z0-9]|$)/
 ];
 
 const SECRET_CODE_PATTERNS = [
@@ -92,6 +94,11 @@ function hasCreditCardMarker(haystack: string): boolean {
   );
 }
 
+function hasCreditCardAutocomplete(element: HTMLElement): boolean {
+  const autocompleteTokens = element.getAttribute("autocomplete")?.toLowerCase().split(/\s+/) ?? [];
+  return autocompleteTokens.some((token) => token.startsWith("cc-"));
+}
+
 function getAriaLabelledByText(element: HTMLElement): string | undefined {
   const ids = element.getAttribute("aria-labelledby")?.split(/\s+/) ?? [];
   const text = ids
@@ -144,7 +151,7 @@ export function maskValue(element: HTMLElement, value: string | string[]): strin
   }
 
   const haystack = searchableAttributes(element);
-  if (hasCreditCardMarker(haystack)) {
+  if (hasCreditCardMarker(haystack) || hasCreditCardAutocomplete(element)) {
     return "{{CREDIT_CARD}}";
   }
   if (

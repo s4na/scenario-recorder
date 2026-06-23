@@ -91,7 +91,10 @@ async function startRecording(): Promise<RecorderState> {
       );
     }
     const activeTab = await seedActiveTabUrl();
-    await injectRecorderIntoTab(activeTab);
+    const recorderReady = await injectRecorderIntoTab(activeTab);
+    if (!recorderReady) {
+      throw new Error("Open an HTTP or HTTPS page before starting recording.");
+    }
     const now = toIsoNow();
     const state: RecorderState = {
       status: "recording",
@@ -267,22 +270,28 @@ async function seedActiveTabUrl(): Promise<chrome.tabs.Tab | undefined> {
   return tab;
 }
 
-async function injectRecorderIntoTab(tab: chrome.tabs.Tab | undefined): Promise<void> {
+async function injectRecorderIntoTab(tab: chrome.tabs.Tab | undefined): Promise<boolean> {
   if (tab?.id === undefined || !tab.url || !isHttpUrl(tab.url)) {
-    return;
+    return false;
   }
   if (await isRecorderContentAvailable(tab.id)) {
-    return;
+    return true;
   }
-  await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    files: ["assets/mainWorldNavigation.js"],
-    world: "MAIN",
-  });
-  await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    files: ["assets/content.js"],
-  });
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["assets/mainWorldNavigation.js"],
+      world: "MAIN",
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["assets/content.js"],
+    });
+    return true;
+  } catch (error) {
+    console.warn("Scenario Recorder could not inject into the active tab.", error);
+    return false;
+  }
 }
 
 async function isRecorderContentAvailable(tabId: number): Promise<boolean> {
