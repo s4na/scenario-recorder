@@ -23,9 +23,19 @@ import {
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
+const NAVIGATION_RECORD_DELAY_MS = 250;
 let stateMutationQueue: Promise<unknown> = Promise.resolve();
 const tabUrls = new Map<number, string>();
+const pendingNavigations = new Map<number, PendingNavigation>();
 const tabUrlsReady = initializeTabUrls();
+
+type PendingNavigation = {
+  fromUrl?: string;
+  timer: ReturnType<typeof setTimeout>;
+  timestamp: number;
+  title?: string;
+  toUrl: string;
+};
 
 function enqueueStateMutation<T>(mutation: () => Promise<T>): Promise<T> {
   const next = stateMutationQueue.catch(() => undefined).then(mutation);
@@ -156,8 +166,13 @@ async function recordStep(
 ): Promise<RecorderState> {
   if (senderTabId !== undefined) {
     await tabUrlsReady;
-    await setTabUrl(senderTabId, step.type === "navigation" && step.toUrl ? step.toUrl : step.url);
+    await flushPendingNavigationBeforeContentStep(senderTabId, step);
+    await updateTabUrlFromStep(senderTabId, step);
   }
+  return appendStep(step);
+}
+
+async function appendStep(step: ScenarioStep): Promise<RecorderState> {
   return enqueueStateMutation(async () => {
     const state = await getRecorderState();
     if (state.status !== "recording") {
@@ -169,6 +184,39 @@ async function recordStep(
   });
 }
 
+async function updateTabUrlFromStep(
+  tabId: number,
+  step: ScenarioStep,
+): Promise<void> {
+  const nextUrl = step.type === "navigation" && step.toUrl ? step.toUrl : step.url;
+  const currentUrl = tabUrls.get(tabId);
+  if (
+    step.type !== "navigation" &&
+    currentUrl &&
+    currentUrl !== nextUrl &&
+    step.url !== currentUrl
+  ) {
+    return;
+  }
+  await setTabUrl(tabId, nextUrl);
+}
+
+async function flushPendingNavigationBeforeContentStep(
+  tabId: number,
+  step: ScenarioStep,
+): Promise<void> {
+  if (step.type === "navigation") {
+    return;
+  }
+  const pending = pendingNavigations.get(tabId);
+  if (!pending) {
+    return;
+  }
+  if (sanitizeUrl(step.url) === sanitizeUrl(pending.toUrl)) {
+    await commitPendingNavigation(tabId);
+  }
+}
+
 async function recordTabNavigation(
   tabId: number,
   toUrl: string,
@@ -176,18 +224,65 @@ async function recordTabNavigation(
 ): Promise<void> {
   await tabUrlsReady;
   const fromUrl = tabUrls.get(tabId);
-  await setTabUrl(tabId, toUrl);
   if (!isHttpUrl(toUrl) || fromUrl === toUrl) {
+    await setTabUrl(tabId, toUrl);
     return;
   }
-  await recordStep({
+  schedulePendingNavigation(tabId, { fromUrl, title, toUrl });
+  void saveTabUrls();
+}
+
+function schedulePendingNavigation(
+  tabId: number,
+  details: Omit<PendingNavigation, "timer" | "timestamp">,
+): void {
+  const previous = takePendingNavigation(tabId);
+  if (previous) {
+    void appendNavigationStep(previous);
+  }
+  tabUrls.set(tabId, details.toUrl);
+  void saveTabUrls();
+  const pending: PendingNavigation = {
+    ...details,
+    timestamp: Date.now(),
+    timer: setTimeout(() => {
+      void commitPendingNavigation(tabId);
+    }, NAVIGATION_RECORD_DELAY_MS),
+  };
+  pendingNavigations.set(tabId, pending);
+}
+
+async function commitPendingNavigation(tabId: number): Promise<void> {
+  const pending = takePendingNavigation(tabId);
+  if (!pending) {
+    return;
+  }
+  tabUrls.set(tabId, pending.toUrl);
+  void saveTabUrls();
+  await appendNavigationStep(pending);
+}
+
+function takePendingNavigation(tabId: number): PendingNavigation | undefined {
+  const pending = pendingNavigations.get(tabId);
+  if (!pending) {
+    return undefined;
+  }
+  pendingNavigations.delete(tabId);
+  clearTimeout(pending.timer);
+  return pending;
+}
+
+async function appendNavigationStep(
+  pending: PendingNavigation,
+): Promise<RecorderState> {
+  return appendStep({
     id: createStepId(),
     type: "navigation",
-    timestamp: Date.now(),
-    url: sanitizeUrl(toUrl),
-    title,
-    fromUrl: sanitizeOptionalUrl(fromUrl),
-    toUrl: sanitizeUrl(toUrl),
+    timestamp: pending.timestamp,
+    url: sanitizeUrl(pending.toUrl),
+    title: pending.title,
+    fromUrl: sanitizeOptionalUrl(pending.fromUrl),
+    toUrl: sanitizeUrl(pending.toUrl),
   });
 }
 
@@ -201,6 +296,11 @@ async function setTabUrl(tabId: number, url: string): Promise<void> {
 }
 
 async function deleteTabUrl(tabId: number): Promise<void> {
+  const pending = pendingNavigations.get(tabId);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingNavigations.delete(tabId);
+  }
   tabUrls.delete(tabId);
   await saveTabUrls();
 }

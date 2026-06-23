@@ -113,7 +113,8 @@ export function sanitizeUrl(rawUrl: string): string {
     url.username = "";
     url.password = "";
     for (const key of Array.from(url.searchParams.keys())) {
-      if (isSecretUrlKey(key)) {
+      const value = url.searchParams.get(key) ?? "";
+      if (isSecretUrlKey(key) || shouldRedactUrlValue(value)) {
         url.searchParams.set(key, "{{SECRET}}");
       }
     }
@@ -131,13 +132,37 @@ export function sanitizeUrl(rawUrl: string): string {
   }
 }
 
+function shouldRedactUrlValue(value: string): boolean {
+  const decoded = safeDecode(value);
+  return (
+    containsSecretUrlParam(decoded) ||
+    containsJwt(decoded) ||
+    /\bBearer\s+[A-Za-z0-9._~+/=-]+/i.test(decoded)
+  );
+}
+
+function containsSecretUrlParam(value: string): boolean {
+  const params = value.matchAll(/(?:^|[?&#;])([^=&#;?]+)=/g);
+  for (const match of params) {
+    if (isSecretUrlKey(match[1])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function containsJwt(value: string): boolean {
+  return /\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/.test(value);
+}
+
 function isSecretUrlKey(key: string): boolean {
   const normalized = normalizeUrlKey(key);
   return SECRET_URL_KEYS.some((secretKey) => normalized === secretKey || normalized.endsWith(`_${secretKey}`));
 }
 
 function normalizeUrlKey(key: string): string {
-  return key
+  const decoded = safeDecode(key);
+  return decoded
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase()
     .replace(/[-.]/g, "_");
@@ -162,7 +187,8 @@ function sanitizeHash(hash: string): string {
   const hashParams = new URLSearchParams(paramText);
   let changed = false;
   for (const key of Array.from(hashParams.keys())) {
-    if (isSecretUrlKey(key)) {
+    const value = hashParams.get(key) ?? "";
+    if (isSecretUrlKey(key) || shouldRedactUrlValue(value)) {
       hashParams.set(key, "{{SECRET}}");
       changed = true;
     }

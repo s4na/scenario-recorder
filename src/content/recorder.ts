@@ -1,4 +1,5 @@
 import type { ScenarioStep } from "../shared/types";
+import { sanitizeUrl } from "../shared/utils";
 import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
 
@@ -31,6 +32,7 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let cachedRecording = false;
 let pendingInputSequence = 0;
+const replayingSubmits = new WeakSet<HTMLFormElement>();
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -63,150 +65,6 @@ function initializeRecordingCache(): void {
 
 function isRecording(): boolean {
   return cachedRecording;
-}
-
-function sanitizeUrl(rawUrl: string): string {
-  try {
-    const url = new URL(rawUrl);
-    url.username = "";
-    url.password = "";
-    for (const key of Array.from(url.searchParams.keys())) {
-      if (isSecretUrlKey(key)) {
-        url.searchParams.set(key, "{{SECRET}}");
-      }
-    }
-    url.pathname = sanitizePath(url.pathname);
-    const hash = sanitizeHash(url.hash);
-    if (hash !== url.hash) {
-      url.hash = hash;
-    }
-    return url.toString();
-  } catch {
-    return rawUrl;
-  }
-}
-
-function isSecretUrlKey(key: string): boolean {
-  const normalized = normalizeUrlKey(key);
-  return [
-    "access_token",
-    "api_key",
-    "apikey",
-    "auth",
-    "authorization",
-    "client_secret",
-    "code",
-    "credential",
-    "id_token",
-    "key",
-    "otp",
-    "password",
-    "refresh_token",
-    "secret",
-    "session",
-    "signature",
-    "state",
-    "ticket",
-    "token",
-  ].some(
-    (secretKey) =>
-      normalized === secretKey || normalized.endsWith(`_${secretKey}`),
-  );
-}
-
-function normalizeUrlKey(key: string): string {
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .toLowerCase()
-    .replace(/[-.]/g, "_");
-}
-
-const SECRET_PATH_MARKERS = [
-  "auth",
-  "confirm",
-  "confirmation",
-  "invite",
-  "invitation",
-  "magic-link",
-  "magic_link",
-  "password",
-  "reset",
-  "reset-password",
-  "reset_password",
-  "session",
-  "ticket",
-  "token",
-  "verify",
-  "verification",
-];
-
-function sanitizeHash(hash: string): string {
-  if (!hash) {
-    return hash;
-  }
-  const rawHash = hash.slice(1);
-  const queryIndex = rawHash.indexOf("?");
-  const hashPath = queryIndex >= 0 ? rawHash.slice(0, queryIndex) : rawHash;
-  if (shouldRedactHashPath(hashPath)) {
-    return "#{{SECRET}}";
-  }
-  const paramText = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash;
-  if (!paramText.includes("=")) {
-    return hash;
-  }
-  const hashParams = new URLSearchParams(paramText);
-  let changed = false;
-  for (const key of Array.from(hashParams.keys())) {
-    if (isSecretUrlKey(key)) {
-      hashParams.set(key, "{{SECRET}}");
-      changed = true;
-    }
-  }
-  if (!changed) {
-    return hash;
-  }
-  return queryIndex >= 0
-    ? `#${rawHash.slice(0, queryIndex)}?${hashParams.toString()}`
-    : `#${hashParams.toString()}`;
-}
-
-function sanitizePath(pathname: string): string {
-  const segments = pathname.split("/");
-  let redactingTail = false;
-  return segments
-    .map((segment) => {
-      if (!segment) {
-        return segment;
-      }
-      if (redactingTail) {
-        return "{{SECRET}}";
-      }
-      if (isSecretPathMarker(segment)) {
-        redactingTail = true;
-        return segment;
-      }
-      return segment;
-    })
-    .join("/");
-}
-
-function isSecretPathMarker(segment: string): boolean {
-  const normalized = safeDecode(segment).toLowerCase();
-  return SECRET_PATH_MARKERS.includes(normalized);
-}
-
-function shouldRedactHashPath(rawHash: string): boolean {
-  const normalized = safeDecode(rawHash).toLowerCase();
-  const segments = normalized.split(/[/?#&=]+/);
-  return segments.some((segment) => SECRET_PATH_MARKERS.includes(segment));
-}
-
-function safeDecode(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
 }
 
 function isDisabledElement(element: HTMLElement): boolean {
@@ -338,12 +196,101 @@ async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promi
     await flushPendingInputs(onStep);
     return;
   }
-  await flushPendingInputs(onStep).catch((error: unknown) => {
+  if (replayingSubmits.has(form) || pendingInputs.size === 0 || !event.cancelable) {
+    replayingSubmits.delete(form);
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  await flushPendingInputs(onStep, { throwOnError: true }).then(() => {
+    const submitter =
+      event.submitter instanceof HTMLElement ? event.submitter : undefined;
+    replayFormSubmit(form, submitter);
+  }).catch((error: unknown) => {
     console.warn(
       "Scenario Recorder could not flush pending input before form submit.",
       error,
     );
+    const submitter =
+      event.submitter instanceof HTMLElement ? event.submitter : undefined;
+    replayFormSubmit(form, submitter);
   });
+}
+
+function replayFormSubmit(
+  form: HTMLFormElement,
+  submitter: HTMLElement | undefined,
+): void {
+  replayingSubmits.add(form);
+  let temporarySubmitter: HTMLButtonElement | undefined;
+  try {
+    if (
+      isSubmitter(submitter) &&
+      submitter.form !== form
+    ) {
+      temporarySubmitter = createTemporarySubmitter(form, submitter);
+      HTMLFormElement.prototype.requestSubmit.call(form, temporarySubmitter);
+    } else {
+      HTMLFormElement.prototype.requestSubmit.call(form, submitter);
+    }
+    window.setTimeout(() => {
+      temporarySubmitter?.remove();
+      replayingSubmits.delete(form);
+    }, 0);
+  } catch (error) {
+    temporarySubmitter?.remove();
+    try {
+      HTMLFormElement.prototype.requestSubmit.call(form);
+      window.setTimeout(() => {
+        replayingSubmits.delete(form);
+      }, 0);
+    } catch (fallbackError) {
+      replayingSubmits.delete(form);
+      console.warn(
+        "Scenario Recorder could not replay form submit.",
+        fallbackError,
+      );
+      console.warn("Scenario Recorder original replay error.", error);
+    }
+  }
+}
+
+function isSubmitter(
+  element: HTMLElement | undefined,
+): element is HTMLButtonElement | HTMLInputElement {
+  return element instanceof HTMLButtonElement || element instanceof HTMLInputElement;
+}
+
+function createTemporarySubmitter(
+  form: HTMLFormElement,
+  submitter: HTMLButtonElement | HTMLInputElement,
+): HTMLButtonElement {
+  const temporary = document.createElement("button");
+  temporary.type = "submit";
+  temporary.hidden = true;
+  copySubmitterAttribute(submitter, temporary, "formaction");
+  copySubmitterAttribute(submitter, temporary, "formenctype");
+  copySubmitterAttribute(submitter, temporary, "formmethod");
+  copySubmitterAttribute(submitter, temporary, "formnovalidate");
+  copySubmitterAttribute(submitter, temporary, "formtarget");
+  if (submitter.name) {
+    temporary.name = submitter.name;
+    temporary.value = submitter.value;
+  }
+  form.append(temporary);
+  return temporary;
+}
+
+function copySubmitterAttribute(
+  from: HTMLButtonElement | HTMLInputElement,
+  to: HTMLButtonElement,
+  attribute: string,
+): void {
+  const value = from.getAttribute(attribute);
+  if (value === null) {
+    return;
+  }
+  to.setAttribute(attribute, value);
 }
 
 function scheduleFill(
