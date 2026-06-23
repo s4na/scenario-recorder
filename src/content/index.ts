@@ -176,6 +176,31 @@ async function sendStep(step: ScenarioStep): Promise<void> {
   }
 }
 
+async function recordNavigationStep(fromUrl: string, toUrl: string): Promise<void> {
+  const step: ScenarioStep = {
+    id: createStepId(),
+    type: "navigation",
+    timestamp: Date.now(),
+    url: sanitizeUrl(toUrl),
+    title: document.title,
+    fromUrl: sanitizeUrl(fromUrl),
+    toUrl: sanitizeUrl(toUrl),
+  };
+  try {
+    await flushPendingInputs(sendStep, { throwOnError: true });
+    await sendStep(step);
+  } catch (error) {
+    window.setTimeout(() => {
+      void flushPendingInputs(sendStep, { throwOnError: true })
+        .then(() => sendStep(step))
+        .catch((retryError: unknown) => {
+          console.warn("Scenario Recorder failed to retry navigation.", retryError);
+        });
+    }, 300);
+    throw error;
+  }
+}
+
 installRecorder(sendStep);
 
 chrome.runtime.onMessage.addListener(
@@ -200,16 +225,7 @@ watchNavigation((fromUrl, toUrl) => {
       if (!recording) {
         return;
       }
-      await flushPendingInputs(sendStep, { throwOnError: true });
-      await sendStep({
-        id: createStepId(),
-        type: "navigation",
-        timestamp: Date.now(),
-        url: sanitizeUrl(toUrl),
-        title: document.title,
-        fromUrl: sanitizeUrl(fromUrl),
-        toUrl: sanitizeUrl(toUrl),
-      });
+      await recordNavigationStep(fromUrl, toUrl);
     })
     .catch((error: unknown) => {
       console.warn("Scenario Recorder failed to record navigation.", error);

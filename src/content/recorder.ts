@@ -31,7 +31,6 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let cachedRecording = false;
 let pendingInputSequence = 0;
-const replayedClicks = new WeakSet<HTMLElement>();
 const replayedSubmits = new WeakSet<HTMLFormElement>();
 
 function createStepId(): string {
@@ -314,65 +313,20 @@ async function flushAndRecordClick(
   if (!isRecording()) {
     return;
   }
-  const navigationTarget = getNavigationClickTarget(event);
-  if (navigationTarget && replayedClicks.has(navigationTarget)) {
-    replayedClicks.delete(navigationTarget);
-    return;
-  }
-  if (navigationTarget) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    try {
-      await flushPendingInputs(onStep, { throwOnError: true });
-      await recordClick(event, onStep);
-    } catch (error) {
-      console.warn(
-        "Scenario Recorder could not persist navigation click before replay.",
-        error,
-      );
-    } finally {
-      replayedClicks.add(navigationTarget);
-      navigationTarget.click();
-      replayedClicks.delete(navigationTarget);
-    }
-    return;
-  }
-  await flushPendingInputs(onStep, { throwOnError: true });
   await recordClick(event, onStep);
 }
 
-function getNavigationClickTarget(event: MouseEvent): HTMLElement | undefined {
-  if (
-    event.button !== 0 ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.shiftKey ||
-    event.altKey
-  ) {
-    return undefined;
+function flushBeforeActivation(event: Event, onStep: StepHandler): void {
+  if (!isRecording()) {
+    return;
   }
-  const targetElement = getComposedElement(event);
-  if (!targetElement) {
-    return undefined;
+  const target = getComposedElement(event);
+  if (!target?.closest("button,a,input,textarea,select,[role],label")) {
+    return;
   }
-  const link = targetElement.closest<HTMLAnchorElement>("a[href]");
-  if (
-    link &&
-    !link.hasAttribute("download") &&
-    link.target !== "_blank" &&
-    link.href &&
-    link.href !== location.href
-  ) {
-    return link;
-  }
-  const submitter = targetElement.closest<HTMLElement>("button,input");
-  if (submitter instanceof HTMLButtonElement && submitter.type === "submit") {
-    return submitter;
-  }
-  if (submitter instanceof HTMLInputElement && submitter.type === "submit") {
-    return submitter;
-  }
-  return undefined;
+  void flushPendingInputs(onStep).catch((error: unknown) => {
+    console.warn("Scenario Recorder failed to flush before activation.", error);
+  });
 }
 
 async function flushAndReplaySubmit(
@@ -472,6 +426,24 @@ function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
 
 export function installRecorder(onStep: StepHandler): void {
   initializeRecordingCache();
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      flushBeforeActivation(event, onStep);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        flushBeforeActivation(event, onStep);
+      }
+    },
+    true,
+  );
+
   document.addEventListener(
     "click",
     (event) => {
