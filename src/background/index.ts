@@ -77,6 +77,7 @@ async function startRecording(): Promise<RecorderState> {
         "Save or clear the current recording before starting a new one.",
       );
     }
+    await seedActiveTabUrl();
     const now = toIsoNow();
     const state: RecorderState = {
       status: "recording",
@@ -202,6 +203,14 @@ async function setTabUrl(tabId: number, url: string): Promise<void> {
 async function deleteTabUrl(tabId: number): Promise<void> {
   tabUrls.delete(tabId);
   await saveTabUrls();
+}
+
+async function seedActiveTabUrl(): Promise<void> {
+  await tabUrlsReady;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id !== undefined && tab.url) {
+    await setTabUrl(tab.id, tab.url);
+  }
 }
 
 async function saveTabUrls(): Promise<void> {
