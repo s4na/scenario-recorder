@@ -18,20 +18,23 @@ function createStepId(): string {
 }
 
 function updateCachedRecording(state: unknown): void {
-  const recorderState = (state as Record<string, { status?: string } | undefined>)[
-    "scenarioRecorder.recorderState"
-  ];
+  const recorderState = (
+    state as Record<string, { status?: string } | undefined>
+  )["scenarioRecorder.recorderState"];
   cachedRecording = recorderState?.status === "recording";
 }
 
 function initializeRecordingCache(): void {
-  void chrome.storage.local.get("scenarioRecorder.recorderState").then(updateCachedRecording);
+  void chrome.storage.local
+    .get("scenarioRecorder.recorderState")
+    .then(updateCachedRecording);
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local" || !changes["scenarioRecorder.recorderState"]) {
       return;
     }
     updateCachedRecording({
-      "scenarioRecorder.recorderState": changes["scenarioRecorder.recorderState"].newValue
+      "scenarioRecorder.recorderState":
+        changes["scenarioRecorder.recorderState"].newValue,
     });
   });
 }
@@ -82,8 +85,11 @@ function isSecretUrlKey(key: string): boolean {
     "signature",
     "state",
     "ticket",
-    "token"
-  ].some((secretKey) => normalized === secretKey || normalized.endsWith(`_${secretKey}`));
+    "token",
+  ].some(
+    (secretKey) =>
+      normalized === secretKey || normalized.endsWith(`_${secretKey}`),
+  );
 }
 
 const SECRET_PATH_MARKERS = [
@@ -102,7 +108,7 @@ const SECRET_PATH_MARKERS = [
   "ticket",
   "token",
   "verify",
-  "verification"
+  "verification",
 ];
 
 function sanitizeHash(hash: string): string {
@@ -113,11 +119,7 @@ function sanitizeHash(hash: string): string {
   const queryIndex = rawHash.indexOf("?");
   const paramText = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash;
   if (!paramText.includes("=")) {
-    return ["token", "secret", "password", "code", "credential", "key"].some((key) =>
-      rawHash.toLowerCase().includes(key)
-    )
-      ? "#{{SECRET}}"
-      : hash;
+    return shouldRedactHashPath(rawHash) ? "#{{SECRET}}" : hash;
   }
   const hashParams = new URLSearchParams(paramText);
   let changed = false;
@@ -150,7 +152,26 @@ function sanitizePath(pathname: string): string {
 
 function isSecretPathMarker(segment: string): boolean {
   const normalized = safeDecode(segment).toLowerCase();
-  return SECRET_PATH_MARKERS.some((marker) => normalized === marker || normalized.includes(marker));
+  return SECRET_PATH_MARKERS.some(
+    (marker) => normalized === marker || normalized.includes(marker),
+  );
+}
+
+function shouldRedactHashPath(rawHash: string): boolean {
+  const normalized = safeDecode(rawHash).toLowerCase();
+  if (
+    ["token", "secret", "password", "code", "credential", "key"].some((key) =>
+      normalized.includes(key),
+    )
+  ) {
+    return true;
+  }
+  const segments = normalized.split(/[/?#&=]+/);
+  return segments.some((segment) =>
+    SECRET_PATH_MARKERS.some(
+      (marker) => segment === marker || segment.includes(marker),
+    ),
+  );
 }
 
 function safeDecode(value: string): string {
@@ -174,25 +195,35 @@ function createBaseStep(type: ScenarioStep["type"]): Omit<ScenarioStep, "id"> {
     type,
     timestamp: Date.now(),
     url: sanitizeUrl(location.href),
-    title: document.title
+    title: document.title,
   };
 }
 
-function getInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string | string[] {
+function getInputValue(
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+): string | string[] {
   if (element instanceof HTMLSelectElement) {
     if (element.multiple) {
       return Array.from(element.selectedOptions).map((option) => option.value);
     }
     return element.value;
   }
-  if (element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio")) {
+  if (
+    element instanceof HTMLInputElement &&
+    (element.type === "checkbox" || element.type === "radio")
+  ) {
     return String(element.checked);
   }
   return element.value;
 }
 
-function isFillInput(element: HTMLElement): element is HTMLInputElement | HTMLTextAreaElement {
-  return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
+function isFillInput(
+  element: HTMLElement,
+): element is HTMLInputElement | HTMLTextAreaElement {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement
+  );
 }
 
 function isFileInput(element: HTMLElement): element is HTMLInputElement {
@@ -200,7 +231,9 @@ function isFileInput(element: HTMLElement): element is HTMLInputElement {
 }
 
 function getComposedElement(event: Event): HTMLElement | undefined {
-  return event.composedPath().find((item): item is HTMLElement => item instanceof HTMLElement);
+  return event
+    .composedPath()
+    .find((item): item is HTMLElement => item instanceof HTMLElement);
 }
 
 function recordClick(event: MouseEvent, onStep: StepHandler): void {
@@ -211,7 +244,7 @@ function recordClick(event: MouseEvent, onStep: StepHandler): void {
 
   const target =
     targetElement.closest<HTMLElement>(
-      "button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]"
+      "button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]",
     ) ?? targetElement;
   if (isDisabledElement(target) || !isRecording()) {
     return;
@@ -228,13 +261,13 @@ function recordClick(event: MouseEvent, onStep: StepHandler): void {
   void onStep({
     id: createStepId(),
     ...createBaseStep("click"),
-    target: createTargetSnapshot(target)
+    target: createTargetSnapshot(target),
   });
 }
 
 function scheduleFill(
   element: HTMLInputElement | HTMLTextAreaElement,
-  onStep: StepHandler
+  onStep: StepHandler,
 ): void {
   const oldTimer = inputTimers.get(element);
   if (oldTimer) {
@@ -250,7 +283,7 @@ function scheduleFill(
       id: createStepId(),
       ...createBaseStep("fill"),
       target: createTargetSnapshot(element),
-      value: maskValue(element, getInputValue(element))
+      value: maskValue(element, getInputValue(element)),
     });
   }, INPUT_DEBOUNCE_MS);
 
@@ -265,7 +298,7 @@ function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
     id: createStepId(),
     ...createBaseStep("select"),
     target: createTargetSnapshot(element),
-    value: maskValue(element, getInputValue(element))
+    value: maskValue(element, getInputValue(element)),
   });
 }
 
@@ -274,20 +307,25 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "click",
     (event) => {
+      void flushPendingInputs(onStep);
       recordClick(event, onStep);
     },
-    true
+    true,
   );
 
   document.addEventListener(
     "input",
     (event) => {
       const target = getComposedElement(event);
-      if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && !isFileInput(target)) {
+      if (
+        (target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement) &&
+        !isFileInput(target)
+      ) {
         scheduleFill(target, onStep);
       }
     },
-    true
+    true,
   );
 
   document.addEventListener(
@@ -296,11 +334,23 @@ export function installRecorder(onStep: StepHandler): void {
       const target = getComposedElement(event);
       if (target instanceof HTMLSelectElement) {
         recordSelect(target, onStep);
-      } else if (target instanceof HTMLElement && isFillInput(target) && !isFileInput(target)) {
+      } else if (
+        target instanceof HTMLElement &&
+        isFillInput(target) &&
+        !isFileInput(target)
+      ) {
         scheduleFill(target, onStep);
       }
     },
-    true
+    true,
+  );
+
+  document.addEventListener(
+    "submit",
+    () => {
+      void flushPendingInputs(onStep);
+    },
+    true,
   );
 
   window.addEventListener("pagehide", () => {
@@ -320,12 +370,14 @@ export async function flushPendingInputs(onStep: StepHandler): Promise<void> {
     if (isDisabledElement(element) || !isRecording()) {
       continue;
     }
-    sends.push(onStep({
-      id: createStepId(),
-      ...createBaseStep("fill"),
-      target: createTargetSnapshot(element),
-      value: maskValue(element, getInputValue(element))
-    }));
+    sends.push(
+      onStep({
+        id: createStepId(),
+        ...createBaseStep("fill"),
+        target: createTargetSnapshot(element),
+        value: maskValue(element, getInputValue(element)),
+      }),
+    );
   }
   await Promise.allSettled(sends);
 }

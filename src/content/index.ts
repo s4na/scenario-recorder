@@ -11,8 +11,12 @@ function createStepId(): string {
 }
 
 async function isRecording(): Promise<boolean> {
-  const state = await chrome.storage.local.get("scenarioRecorder.recorderState");
-  const recorderState = state["scenarioRecorder.recorderState"] as { status?: string } | undefined;
+  const state = await chrome.storage.local.get(
+    "scenarioRecorder.recorderState",
+  );
+  const recorderState = state["scenarioRecorder.recorderState"] as
+    | { status?: string }
+    | undefined;
   return recorderState?.status === "recording";
 }
 
@@ -58,8 +62,11 @@ function isSecretUrlKey(key: string): boolean {
     "signature",
     "state",
     "ticket",
-    "token"
-  ].some((secretKey) => normalized === secretKey || normalized.endsWith(`_${secretKey}`));
+    "token",
+  ].some(
+    (secretKey) =>
+      normalized === secretKey || normalized.endsWith(`_${secretKey}`),
+  );
 }
 
 const SECRET_PATH_MARKERS = [
@@ -78,7 +85,7 @@ const SECRET_PATH_MARKERS = [
   "ticket",
   "token",
   "verify",
-  "verification"
+  "verification",
 ];
 
 function sanitizeHash(hash: string): string {
@@ -89,11 +96,7 @@ function sanitizeHash(hash: string): string {
   const queryIndex = rawHash.indexOf("?");
   const paramText = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash;
   if (!paramText.includes("=")) {
-    return ["token", "secret", "password", "code", "credential", "key"].some((key) =>
-      rawHash.toLowerCase().includes(key)
-    )
-      ? "#{{SECRET}}"
-      : hash;
+    return shouldRedactHashPath(rawHash) ? "#{{SECRET}}" : hash;
   }
   const hashParams = new URLSearchParams(paramText);
   let changed = false;
@@ -126,7 +129,26 @@ function sanitizePath(pathname: string): string {
 
 function isSecretPathMarker(segment: string): boolean {
   const normalized = safeDecode(segment).toLowerCase();
-  return SECRET_PATH_MARKERS.some((marker) => normalized === marker || normalized.includes(marker));
+  return SECRET_PATH_MARKERS.some(
+    (marker) => normalized === marker || normalized.includes(marker),
+  );
+}
+
+function shouldRedactHashPath(rawHash: string): boolean {
+  const normalized = safeDecode(rawHash).toLowerCase();
+  if (
+    ["token", "secret", "password", "code", "credential", "key"].some((key) =>
+      normalized.includes(key),
+    )
+  ) {
+    return true;
+  }
+  const segments = normalized.split(/[/?#&=]+/);
+  return segments.some((segment) =>
+    SECRET_PATH_MARKERS.some(
+      (marker) => segment === marker || segment.includes(marker),
+    ),
+  );
 }
 
 function safeDecode(value: string): string {
@@ -138,33 +160,42 @@ function safeDecode(value: string): string {
 }
 
 async function sendStep(step: ScenarioStep): Promise<void> {
-  await chrome.runtime.sendMessage({ type: "RECORDED_STEP", payload: { step } });
+  await chrome.runtime.sendMessage({
+    type: "RECORDED_STEP",
+    payload: { step },
+  });
 }
 
 installRecorder(sendStep);
 
-chrome.runtime.onMessage.addListener((message: ContentMessage, _sender, sendResponse) => {
-  if (message.type !== "FLUSH_PENDING_INPUTS") {
-    return false;
-  }
-  void flushPendingInputs(sendStep).then(() => sendResponse({ ok: true }));
-  return true;
-});
+chrome.runtime.onMessage.addListener(
+  (message: ContentMessage, _sender, sendResponse) => {
+    if (message.type !== "FLUSH_PENDING_INPUTS") {
+      return false;
+    }
+    void flushPendingInputs(sendStep).then(() => sendResponse({ ok: true }));
+    return true;
+  },
+);
 
 watchNavigation((fromUrl, toUrl) => {
-  void isRecording().then(async (recording) => {
-    if (!recording) {
-      return;
-    }
-    await flushPendingInputs(sendStep);
-    sendStep({
-      id: createStepId(),
-      type: "navigation",
-      timestamp: Date.now(),
-      url: sanitizeUrl(toUrl),
-      title: document.title,
-      fromUrl: sanitizeUrl(fromUrl),
-      toUrl: sanitizeUrl(toUrl)
+  void isRecording()
+    .then(async (recording) => {
+      if (!recording) {
+        return;
+      }
+      await flushPendingInputs(sendStep);
+      await sendStep({
+        id: createStepId(),
+        type: "navigation",
+        timestamp: Date.now(),
+        url: sanitizeUrl(toUrl),
+        title: document.title,
+        fromUrl: sanitizeUrl(fromUrl),
+        toUrl: sanitizeUrl(toUrl),
+      });
+    })
+    .catch((error: unknown) => {
+      console.warn("Scenario Recorder failed to record navigation.", error);
     });
-  });
 });
