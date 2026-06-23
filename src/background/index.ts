@@ -34,6 +34,10 @@ function withUpdatedStep(state: RecorderState, step: ScenarioStep): RecorderStat
 
 async function startRecording(): Promise<RecorderState> {
   return enqueueStateMutation(async () => {
+    const currentState = await getRecorderState();
+    if (currentState.status !== "idle") {
+      return currentState;
+    }
     const now = toIsoNow();
     const state: RecorderState = {
       status: "recording",
@@ -50,6 +54,9 @@ async function pauseRecording(): Promise<RecorderState> {
   return enqueueStateMutation(async () => {
     const now = toIsoNow();
     const state = await getRecorderState();
+    if (state.status !== "recording") {
+      return state;
+    }
     const sessions = [...state.recordingSessions];
     const lastSession = sessions[sessions.length - 1] ?? {};
     sessions[sessions.length - 1] = { ...lastSession, pausedAt: now };
@@ -63,6 +70,9 @@ async function resumeRecording(): Promise<RecorderState> {
   return enqueueStateMutation(async () => {
     const now = toIsoNow();
     const state = await getRecorderState();
+    if (state.status !== "paused") {
+      return state;
+    }
     const nextState = {
       ...state,
       status: "recording" as const,
@@ -78,6 +88,9 @@ async function stopRecording(): Promise<RecorderState> {
   return enqueueStateMutation(async () => {
     const now = toIsoNow();
     const state = await getRecorderState();
+    if (state.status === "idle") {
+      return state;
+    }
     const sessions = [...state.recordingSessions];
     const lastSession = sessions[sessions.length - 1] ?? {};
     sessions[sessions.length - 1] = { ...lastSession, stoppedAt: now };
@@ -161,6 +174,32 @@ async function getCurrentRecorderState(): Promise<RecorderState> {
   return enqueueStateMutation(() => getRecorderState());
 }
 
+async function deleteStoredScenario(scenarioId: string): Promise<{ scenarios: Scenario[] }> {
+  return enqueueStateMutation(async () => {
+    await deleteScenario(scenarioId);
+    return { scenarios: await getScenarios() };
+  });
+}
+
+async function getStoredScenarios(): Promise<{ scenarios: Scenario[] }> {
+  return enqueueStateMutation(async () => ({ scenarios: await getScenarios() }));
+}
+
+async function getStoredScenario(scenarioId: string): Promise<{ scenario?: Scenario }> {
+  return enqueueStateMutation(async () => {
+    const scenarios = await getScenarios();
+    return { scenario: scenarios.find((scenario) => scenario.id === scenarioId) };
+  });
+}
+
+async function exportStoredScenarios(): Promise<ScenarioExport> {
+  return enqueueStateMutation(async () => ({
+    schemaVersion: "scenario-recorder/export/v1",
+    exportedAt: toIsoNow(),
+    scenarios: await getScenarios()
+  }));
+}
+
 function sanitizeStepUrls(step: ScenarioStep): ScenarioStep {
   return {
     ...step,
@@ -193,22 +232,13 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
     case "SAVE_SCENARIO":
       return saveCurrentScenario(message.payload.name);
     case "DELETE_SCENARIO":
-      await deleteScenario(message.payload.scenarioId);
-      return { scenarios: await getScenarios() };
+      return deleteStoredScenario(message.payload.scenarioId);
     case "GET_SCENARIOS":
-      return { scenarios: await getScenarios() };
-    case "EXPORT_SCENARIO": {
-      const scenarios = await getScenarios();
-      return { scenario: scenarios.find((scenario) => scenario.id === message.payload.scenarioId) };
-    }
-    case "EXPORT_ALL_SCENARIOS": {
-      const exportPayload: ScenarioExport = {
-        schemaVersion: "scenario-recorder/export/v1",
-        exportedAt: toIsoNow(),
-        scenarios: await getScenarios()
-      };
-      return exportPayload;
-    }
+      return getStoredScenarios();
+    case "EXPORT_SCENARIO":
+      return getStoredScenario(message.payload.scenarioId);
+    case "EXPORT_ALL_SCENARIOS":
+      return exportStoredScenarios();
     default:
       throw new Error("Unsupported message");
   }

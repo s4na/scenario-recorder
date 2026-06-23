@@ -79,5 +79,10 @@ export type ContentMessage<TType extends ContentMessageType = ContentMessageType
 export function sendRuntimeMessage<TType extends MessageType>(
   message: RuntimeMessage<TType>
 ): Promise<RuntimeResponse<TType>> {
-  return chrome.runtime.sendMessage(message);
+  return chrome.runtime.sendMessage(message).then((response) => {
+    if (response && typeof response === "object" && "error" in response) {
+      throw new Error(String(response.error));
+    }
+    return response as RuntimeResponse<TType>;
+  });
 }

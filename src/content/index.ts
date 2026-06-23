@@ -24,6 +24,7 @@ function sanitizeUrl(rawUrl: string): string {
         url.searchParams.set(key, "{{SECRET}}");
       }
     }
+    url.pathname = sanitizePath(url.pathname);
     const hash = sanitizeHash(url.hash);
     if (hash !== url.hash) {
       url.hash = hash;
@@ -59,6 +60,25 @@ function isSecretUrlKey(key: string): boolean {
   ].some((secretKey) => normalized === secretKey || normalized.endsWith(`_${secretKey}`));
 }
 
+const SECRET_PATH_MARKERS = [
+  "auth",
+  "confirm",
+  "confirmation",
+  "invite",
+  "invitation",
+  "magic-link",
+  "magic_link",
+  "password",
+  "reset",
+  "reset-password",
+  "reset_password",
+  "session",
+  "ticket",
+  "token",
+  "verify",
+  "verification"
+];
+
 function sanitizeHash(hash: string): string {
   if (!hash) {
     return hash;
@@ -87,6 +107,32 @@ function sanitizeHash(hash: string): string {
   return queryIndex >= 0
     ? `#${rawHash.slice(0, queryIndex)}?${hashParams.toString()}`
     : `#${hashParams.toString()}`;
+}
+
+function sanitizePath(pathname: string): string {
+  const segments = pathname.split("/");
+  return segments
+    .map((segment, index) => {
+      if (!segment) {
+        return segment;
+      }
+      const previous = segments[index - 1] ?? "";
+      return isSecretPathMarker(previous) ? "{{SECRET}}" : segment;
+    })
+    .join("/");
+}
+
+function isSecretPathMarker(segment: string): boolean {
+  const normalized = safeDecode(segment).toLowerCase();
+  return SECRET_PATH_MARKERS.some((marker) => normalized === marker || normalized.includes(marker));
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 async function sendStep(step: ScenarioStep): Promise<void> {

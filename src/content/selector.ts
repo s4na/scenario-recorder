@@ -75,12 +75,13 @@ export function getElementLabel(element: HTMLElement): string | undefined {
 }
 
 function getAccessibleName(element: HTMLElement): string | undefined {
-  const inputValue =
-    element instanceof HTMLInputElement && !shouldMaskValue(element) ? cleanText(element.value) : undefined;
+  const stableName = cleanText(element.getAttribute("aria-label")) ?? getElementLabel(element);
+  if (shouldMaskValue(element)) {
+    return stableName;
+  }
+
   return (
-    cleanText(element.getAttribute("aria-label")) ??
-    getElementLabel(element) ??
-    inputValue ??
+    stableName ??
     cleanText(element.innerText) ??
     cleanText(element.textContent)
   );
@@ -142,7 +143,7 @@ export function getSelectorCandidates(element: HTMLElement): SelectorCandidate[]
   const accessibleName = getAccessibleName(element);
   const label = getElementLabel(element);
   const placeholder = cleanText(element.getAttribute("placeholder"));
-  const text = cleanText(element.innerText ?? element.textContent);
+  const text = shouldMaskValue(element) ? undefined : cleanText(element.innerText ?? element.textContent);
 
   addCandidate(candidates, attributeCandidate(element, "data-testid", 0.95));
   addCandidate(candidates, attributeCandidate(element, "data-test", 0.94));
@@ -187,10 +188,11 @@ function attributeCandidate(
 
 export function createTargetSnapshot(element: HTMLElement): TargetSnapshot {
   const rect = element.getBoundingClientRect();
+  const text = shouldMaskValue(element) ? undefined : cleanText(element.innerText ?? element.textContent);
   return {
     selectorCandidates: getSelectorCandidates(element),
     tagName: element.tagName.toLowerCase(),
-    text: cleanText(element.innerText ?? element.textContent),
+    text,
     ariaLabel: cleanText(element.getAttribute("aria-label")),
     role: getElementRole(element),
     name: element.getAttribute("name") ?? undefined,

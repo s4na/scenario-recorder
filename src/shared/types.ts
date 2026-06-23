@@ -57,7 +57,7 @@ export type ScenarioStep = {
   url: string;
   title?: string;
   target?: TargetSnapshot;
-  value?: string;
+  value?: string | string[];
   fromUrl?: string;
   toUrl?: string;
 };

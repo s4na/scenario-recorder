@@ -30,6 +30,7 @@ function sanitizeUrl(rawUrl: string): string {
         url.searchParams.set(key, "{{SECRET}}");
       }
     }
+    url.pathname = sanitizePath(url.pathname);
     const hash = sanitizeHash(url.hash);
     if (hash !== url.hash) {
       url.hash = hash;
@@ -65,6 +66,25 @@ function isSecretUrlKey(key: string): boolean {
   ].some((secretKey) => normalized === secretKey || normalized.endsWith(`_${secretKey}`));
 }
 
+const SECRET_PATH_MARKERS = [
+  "auth",
+  "confirm",
+  "confirmation",
+  "invite",
+  "invitation",
+  "magic-link",
+  "magic_link",
+  "password",
+  "reset",
+  "reset-password",
+  "reset_password",
+  "session",
+  "ticket",
+  "token",
+  "verify",
+  "verification"
+];
+
 function sanitizeHash(hash: string): string {
   if (!hash) {
     return hash;
@@ -95,6 +115,32 @@ function sanitizeHash(hash: string): string {
     : `#${hashParams.toString()}`;
 }
 
+function sanitizePath(pathname: string): string {
+  const segments = pathname.split("/");
+  return segments
+    .map((segment, index) => {
+      if (!segment) {
+        return segment;
+      }
+      const previous = segments[index - 1] ?? "";
+      return isSecretPathMarker(previous) ? "{{SECRET}}" : segment;
+    })
+    .join("/");
+}
+
+function isSecretPathMarker(segment: string): boolean {
+  const normalized = safeDecode(segment).toLowerCase();
+  return SECRET_PATH_MARKERS.some((marker) => normalized === marker || normalized.includes(marker));
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function isDisabledElement(element: HTMLElement): boolean {
   return (
     element.hasAttribute("disabled") ||
@@ -112,8 +158,11 @@ function createBaseStep(type: ScenarioStep["type"]): Omit<ScenarioStep, "id"> {
   };
 }
 
-function getInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string {
+function getInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string | string[] {
   if (element instanceof HTMLSelectElement) {
+    if (element.multiple) {
+      return Array.from(element.selectedOptions).map((option) => option.value);
+    }
     return element.value;
   }
   if (element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio")) {
@@ -126,13 +175,21 @@ function isFillInput(element: HTMLElement): element is HTMLInputElement | HTMLTe
   return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
 }
 
-async function recordClick(event: MouseEvent, onStep: StepHandler): Promise<void> {
-  if (!(event.target instanceof HTMLElement)) {
+function getComposedElement(event: Event): HTMLElement | undefined {
+  return event.composedPath().find((item): item is HTMLElement => item instanceof HTMLElement);
+}
+
+function recordClick(event: MouseEvent, onStep: StepHandler): void {
+  const targetElement = getComposedElement(event);
+  if (!targetElement) {
     return;
   }
 
-  const target = event.target.closest<HTMLElement>("button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]") ?? event.target;
-  if (isDisabledElement(target) || !(await isRecording())) {
+  const target =
+    targetElement.closest<HTMLElement>(
+      "button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]"
+    ) ?? targetElement;
+  if (isDisabledElement(target)) {
     return;
   }
 
@@ -192,7 +249,7 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "click",
     (event) => {
-      void recordClick(event, onStep);
+      recordClick(event, onStep);
     },
     true
   );
@@ -200,8 +257,9 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "input",
     (event) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-        scheduleFill(event.target, onStep);
+      const target = getComposedElement(event);
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        scheduleFill(target, onStep);
       }
     },
     true
@@ -210,10 +268,11 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "change",
     (event) => {
-      if (event.target instanceof HTMLSelectElement) {
-        void recordSelect(event.target, onStep);
-      } else if (event.target instanceof HTMLElement && isFillInput(event.target)) {
-        scheduleFill(event.target, onStep);
+      const target = getComposedElement(event);
+      if (target instanceof HTMLSelectElement) {
+        void recordSelect(target, onStep);
+      } else if (target instanceof HTMLElement && isFillInput(target)) {
+        scheduleFill(target, onStep);
       }
     },
     true

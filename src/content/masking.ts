@@ -27,9 +27,12 @@ const SECRET_MARKERS = [
 const PASSWORD_AUTOCOMPLETE_VALUES = new Set([
   "current-password",
   "new-password",
+  "one-time-code",
   "cc-number",
   "cc-csc",
-  "cc-exp"
+  "cc-exp",
+  "cc-exp-month",
+  "cc-exp-year"
 ]);
 
 function searchableAttributes(element: HTMLElement): string {
@@ -49,8 +52,12 @@ export function shouldMaskValue(element: HTMLElement): boolean {
     return true;
   }
 
-  const autocomplete = element.getAttribute("autocomplete")?.toLowerCase();
-  if (autocomplete && PASSWORD_AUTOCOMPLETE_VALUES.has(autocomplete)) {
+  const autocompleteTokens = element.getAttribute("autocomplete")?.toLowerCase().split(/\s+/) ?? [];
+  if (
+    autocompleteTokens.some(
+      (token) => PASSWORD_AUTOCOMPLETE_VALUES.has(token) || token.startsWith("cc-")
+    )
+  ) {
     return true;
   }
 
@@ -58,7 +65,7 @@ export function shouldMaskValue(element: HTMLElement): boolean {
   return SECRET_MARKERS.some((marker) => haystack.includes(marker));
 }
 
-export function maskValue(element: HTMLElement, value: string): string {
+export function maskValue(element: HTMLElement, value: string | string[]): string | string[] {
   if (!shouldMaskValue(element)) {
     return value;
   }
