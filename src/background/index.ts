@@ -153,9 +153,9 @@ async function recordStep(
   step: ScenarioStep,
   senderTabId?: number,
 ): Promise<RecorderState> {
-  if (senderTabId !== undefined && step.type === "navigation" && step.toUrl) {
+  if (senderTabId !== undefined) {
     await tabUrlsReady;
-    await setTabUrl(senderTabId, step.toUrl);
+    await setTabUrl(senderTabId, step.type === "navigation" && step.toUrl ? step.toUrl : step.url);
   }
   return enqueueStateMutation(async () => {
     const state = await getRecorderState();

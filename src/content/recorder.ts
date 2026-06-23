@@ -31,8 +31,6 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let cachedRecording = false;
 let pendingInputSequence = 0;
-const replayedSubmits = new WeakSet<HTMLFormElement>();
-const replayedLinks = new WeakSet<HTMLAnchorElement>();
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -314,51 +312,7 @@ async function flushAndRecordClick(
   if (!isRecording()) {
     return;
   }
-  const link = getNativeNavigationLink(event);
-  if (link && replayedLinks.has(link)) {
-    replayedLinks.delete(link);
-    return;
-  }
-  if (link) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    try {
-      await flushPendingInputs(onStep, { throwOnError: true });
-      await recordClick(event, onStep);
-    } catch (error) {
-      console.warn("Scenario Recorder could not persist link click before navigation.", error);
-    } finally {
-      replayedLinks.add(link);
-      location.assign(link.href);
-      replayedLinks.delete(link);
-    }
-    return;
-  }
   await recordClick(event, onStep);
-}
-
-function getNativeNavigationLink(event: MouseEvent): HTMLAnchorElement | undefined {
-  if (
-    event.button !== 0 ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.shiftKey ||
-    event.altKey
-  ) {
-    return undefined;
-  }
-  const targetElement = getComposedElement(event);
-  const link = targetElement?.closest<HTMLAnchorElement>("a[href]");
-  if (
-    link &&
-    !link.hasAttribute("download") &&
-    link.target !== "_blank" &&
-    link.href &&
-    link.href !== location.href
-  ) {
-    return link;
-  }
-  return undefined;
 }
 
 function flushBeforeActivation(event: Event, onStep: StepHandler): void {
@@ -374,10 +328,7 @@ function flushBeforeActivation(event: Event, onStep: StepHandler): void {
   });
 }
 
-async function flushAndReplaySubmit(
-  event: SubmitEvent,
-  onStep: StepHandler,
-): Promise<void> {
+async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promise<void> {
   if (!isRecording()) {
     return;
   }
@@ -387,36 +338,12 @@ async function flushAndReplaySubmit(
     await flushPendingInputs(onStep);
     return;
   }
-  const submitter = getSubmitter(event);
-  if (replayedSubmits.has(form)) {
-    replayedSubmits.delete(form);
-    return;
-  }
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  try {
-    await flushPendingInputs(onStep, { throwOnError: true });
-  } catch (error) {
+  await flushPendingInputs(onStep).catch((error: unknown) => {
     console.warn(
       "Scenario Recorder could not flush pending input before form submit.",
       error,
     );
-  } finally {
-    replayedSubmits.add(form);
-    form.requestSubmit(submitter);
-    replayedSubmits.delete(form);
-  }
-}
-
-function getSubmitter(event: SubmitEvent): HTMLElement | undefined {
-  const submitter = event.submitter;
-  if (
-    submitter instanceof HTMLButtonElement ||
-    submitter instanceof HTMLInputElement
-  ) {
-    return submitter;
-  }
-  return undefined;
+  });
 }
 
 function scheduleFill(
@@ -532,7 +459,7 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "submit",
     (event) => {
-      void flushAndReplaySubmit(event, onStep);
+      void flushBeforeSubmit(event, onStep);
     },
     true,
   );
