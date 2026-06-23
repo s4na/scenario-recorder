@@ -62,7 +62,7 @@ async function recordNavigationStep(fromUrl: string, toUrl: string): Promise<voi
   try {
     await flushPendingInputs(sendStep, { throwOnError: true });
     await sendStep(step);
-  } catch (error) {
+  } catch {
     await delay(300);
     await flushPendingInputs(sendStep, { throwOnError: true });
     await sendStep(step);
