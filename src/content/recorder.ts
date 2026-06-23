@@ -32,6 +32,7 @@ let lastClickTimestamp = 0;
 let cachedRecording = false;
 let pendingInputSequence = 0;
 const replayedSubmits = new WeakSet<HTMLFormElement>();
+const replayedLinks = new WeakSet<HTMLAnchorElement>();
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -313,7 +314,51 @@ async function flushAndRecordClick(
   if (!isRecording()) {
     return;
   }
+  const link = getNativeNavigationLink(event);
+  if (link && replayedLinks.has(link)) {
+    replayedLinks.delete(link);
+    return;
+  }
+  if (link) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try {
+      await flushPendingInputs(onStep, { throwOnError: true });
+      await recordClick(event, onStep);
+    } catch (error) {
+      console.warn("Scenario Recorder could not persist link click before navigation.", error);
+    } finally {
+      replayedLinks.add(link);
+      location.assign(link.href);
+      replayedLinks.delete(link);
+    }
+    return;
+  }
   await recordClick(event, onStep);
+}
+
+function getNativeNavigationLink(event: MouseEvent): HTMLAnchorElement | undefined {
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return undefined;
+  }
+  const targetElement = getComposedElement(event);
+  const link = targetElement?.closest<HTMLAnchorElement>("a[href]");
+  if (
+    link &&
+    !link.hasAttribute("download") &&
+    link.target !== "_blank" &&
+    link.href &&
+    link.href !== location.href
+  ) {
+    return link;
+  }
+  return undefined;
 }
 
 function flushBeforeActivation(event: Event, onStep: StepHandler): void {

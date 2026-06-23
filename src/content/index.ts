@@ -167,6 +167,13 @@ function safeDecode(value: string): string {
 }
 
 async function sendStep(step: ScenarioStep): Promise<void> {
+  sendQueue = sendQueue.then(() => sendStepNow(step), () => sendStepNow(step));
+  return sendQueue;
+}
+
+let sendQueue: Promise<void> = Promise.resolve();
+
+async function sendStepNow(step: ScenarioStep): Promise<void> {
   const response = await chrome.runtime.sendMessage({
     type: "RECORDED_STEP",
     payload: { step },
@@ -190,15 +197,14 @@ async function recordNavigationStep(fromUrl: string, toUrl: string): Promise<voi
     await flushPendingInputs(sendStep, { throwOnError: true });
     await sendStep(step);
   } catch (error) {
-    window.setTimeout(() => {
-      void flushPendingInputs(sendStep, { throwOnError: true })
-        .then(() => sendStep(step))
-        .catch((retryError: unknown) => {
-          console.warn("Scenario Recorder failed to retry navigation.", retryError);
-        });
-    }, 300);
-    throw error;
+    await delay(300);
+    await flushPendingInputs(sendStep, { throwOnError: true });
+    await sendStep(step);
   }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 installRecorder(sendStep);
