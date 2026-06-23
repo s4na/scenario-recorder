@@ -5,15 +5,27 @@ import {
   getRecorderState,
   getScenarios,
   saveScenario,
-  setRecorderState
+  setRecorderState,
 } from "../shared/storage";
-import type { RecorderState, Scenario, ScenarioExport, ScenarioStep } from "../shared/types";
-import { createId, createStepId, sanitizeUrl, shouldReplaceFillStep, toIsoNow } from "../shared/utils";
+import type {
+  RecorderState,
+  Scenario,
+  ScenarioExport,
+  ScenarioStep,
+} from "../shared/types";
+import {
+  createId,
+  createStepId,
+  sanitizeUrl,
+  shouldReplaceFillStep,
+  toIsoNow,
+} from "../shared/utils";
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
 let stateMutationQueue: Promise<unknown> = Promise.resolve();
 const tabUrls = new Map<number, string>();
+const tabUrlsReady = initializeTabUrls();
 
 function enqueueStateMutation<T>(mutation: () => Promise<T>): Promise<T> {
   const next = stateMutationQueue.catch(() => undefined).then(mutation);
@@ -21,7 +33,10 @@ function enqueueStateMutation<T>(mutation: () => Promise<T>): Promise<T> {
   return next;
 }
 
-function withUpdatedStep(state: RecorderState, step: ScenarioStep): RecorderState {
+function withUpdatedStep(
+  state: RecorderState,
+  step: ScenarioStep,
+): RecorderState {
   const currentSteps = [...state.currentSteps];
   const lastStep = currentSteps[currentSteps.length - 1];
 
@@ -38,7 +53,10 @@ function withUpdatedStep(state: RecorderState, step: ScenarioStep): RecorderStat
   return { ...state, currentSteps };
 }
 
-function isDuplicateNavigationStep(previous: ScenarioStep | undefined, next: ScenarioStep): boolean {
+function isDuplicateNavigationStep(
+  previous: ScenarioStep | undefined,
+  next: ScenarioStep,
+): boolean {
   return (
     previous?.type === "navigation" &&
     next.type === "navigation" &&
@@ -55,14 +73,16 @@ async function startRecording(): Promise<RecorderState> {
       return currentState;
     }
     if (currentState.currentSteps.length > 0) {
-      throw new Error("Save or clear the current recording before starting a new one.");
+      throw new Error(
+        "Save or clear the current recording before starting a new one.",
+      );
     }
     const now = toIsoNow();
     const state: RecorderState = {
       status: "recording",
       currentSteps: [],
       recordingSessions: [{ startedAt: now }],
-      startedAt: now
+      startedAt: now,
     };
     await setRecorderState(state);
     return state;
@@ -79,7 +99,12 @@ async function pauseRecording(): Promise<RecorderState> {
     const sessions = [...state.recordingSessions];
     const lastSession = sessions[sessions.length - 1] ?? {};
     sessions[sessions.length - 1] = { ...lastSession, pausedAt: now };
-    const nextState = { ...state, status: "paused" as const, pausedAt: now, recordingSessions: sessions };
+    const nextState = {
+      ...state,
+      status: "paused" as const,
+      pausedAt: now,
+      recordingSessions: sessions,
+    };
     await setRecorderState(nextState);
     return nextState;
   });
@@ -96,7 +121,7 @@ async function resumeRecording(): Promise<RecorderState> {
       ...state,
       status: "recording" as const,
       resumedAt: now,
-      recordingSessions: [...state.recordingSessions, { resumedAt: now }]
+      recordingSessions: [...state.recordingSessions, { resumedAt: now }],
     };
     await setRecorderState(nextState);
     return nextState;
@@ -113,13 +138,25 @@ async function stopRecording(): Promise<RecorderState> {
     const sessions = [...state.recordingSessions];
     const lastSession = sessions[sessions.length - 1] ?? {};
     sessions[sessions.length - 1] = { ...lastSession, stoppedAt: now };
-    const nextState = { ...state, status: "idle" as const, stoppedAt: now, recordingSessions: sessions };
+    const nextState = {
+      ...state,
+      status: "idle" as const,
+      stoppedAt: now,
+      recordingSessions: sessions,
+    };
     await setRecorderState(nextState);
     return nextState;
   });
 }
 
-async function recordStep(step: ScenarioStep): Promise<RecorderState> {
+async function recordStep(
+  step: ScenarioStep,
+  senderTabId?: number,
+): Promise<RecorderState> {
+  if (senderTabId !== undefined && step.type === "navigation" && step.toUrl) {
+    await tabUrlsReady;
+    await setTabUrl(senderTabId, step.toUrl);
+  }
   return enqueueStateMutation(async () => {
     const state = await getRecorderState();
     if (state.status !== "recording") {
@@ -131,7 +168,12 @@ async function recordStep(step: ScenarioStep): Promise<RecorderState> {
   });
 }
 
-async function recordTabNavigation(tabId: number, toUrl: string, title?: string): Promise<void> {
+async function recordTabNavigation(
+  tabId: number,
+  toUrl: string,
+  title?: string,
+): Promise<void> {
+  await tabUrlsReady;
   const fromUrl = tabUrls.get(tabId);
   await setTabUrl(tabId, toUrl);
   if (!fromUrl || fromUrl === toUrl || !isHttpUrl(toUrl)) {
@@ -144,7 +186,7 @@ async function recordTabNavigation(tabId: number, toUrl: string, title?: string)
     url: sanitizeUrl(toUrl),
     title,
     fromUrl: sanitizeUrl(fromUrl),
-    toUrl: sanitizeUrl(toUrl)
+    toUrl: sanitizeUrl(toUrl),
   });
 }
 
@@ -163,8 +205,13 @@ async function deleteTabUrl(tabId: number): Promise<void> {
 }
 
 async function saveTabUrls(): Promise<void> {
-  const entries = Array.from(tabUrls.entries()).map(([tabId, url]) => [String(tabId), url]);
-  await chrome.storage.session.set({ [TAB_URLS_STORAGE_KEY]: Object.fromEntries(entries) });
+  const entries = Array.from(tabUrls.entries()).map(([tabId, url]) => [
+    String(tabId),
+    url,
+  ]);
+  await chrome.storage.session.set({
+    [TAB_URLS_STORAGE_KEY]: Object.fromEntries(entries),
+  });
 }
 
 async function loadTabUrls(): Promise<void> {
@@ -183,7 +230,9 @@ async function loadTabUrls(): Promise<void> {
 function createScenario(name: string, state: RecorderState): Scenario {
   const now = toIsoNow();
   const firstStep = state.currentSteps[0];
-  const startUrl = sanitizeOptionalUrl(firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url);
+  const startUrl = sanitizeOptionalUrl(
+    firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url,
+  );
   const baseUrl = getBaseUrl(startUrl);
 
   return {
@@ -198,15 +247,15 @@ function createScenario(name: string, state: RecorderState): Scenario {
     baseUrl,
     variables: {},
     recording: {
-      sessions: state.recordingSessions
+      sessions: state.recordingSessions,
     },
     steps: state.currentSteps,
     assertions: [],
     metadata: {
       userAgent: navigator.userAgent,
       extensionVersion: EXTENSION_VERSION,
-      recordedBy: "scenario-recorder"
-    }
+      recordedBy: "scenario-recorder",
+    },
   };
 }
 
@@ -221,7 +270,9 @@ function getBaseUrl(url: string | undefined): string | undefined {
   }
 }
 
-async function saveCurrentScenario(name: string): Promise<{ scenario: Scenario; state: RecorderState }> {
+async function saveCurrentScenario(
+  name: string,
+): Promise<{ scenario: Scenario; state: RecorderState }> {
   return enqueueStateMutation(async () => {
     const state = await getRecorderState();
     if (state.status !== "idle") {
@@ -248,7 +299,9 @@ async function getCurrentRecorderState(): Promise<RecorderState> {
   return enqueueStateMutation(() => getRecorderState());
 }
 
-async function deleteStoredScenario(scenarioId: string): Promise<{ scenarios: Scenario[] }> {
+async function deleteStoredScenario(
+  scenarioId: string,
+): Promise<{ scenarios: Scenario[] }> {
   return enqueueStateMutation(async () => {
     await deleteScenario(scenarioId);
     return { scenarios: await getScenarios() };
@@ -256,13 +309,19 @@ async function deleteStoredScenario(scenarioId: string): Promise<{ scenarios: Sc
 }
 
 async function getStoredScenarios(): Promise<{ scenarios: Scenario[] }> {
-  return enqueueStateMutation(async () => ({ scenarios: await getScenarios() }));
+  return enqueueStateMutation(async () => ({
+    scenarios: await getScenarios(),
+  }));
 }
 
-async function getStoredScenario(scenarioId: string): Promise<{ scenario?: Scenario }> {
+async function getStoredScenario(
+  scenarioId: string,
+): Promise<{ scenario?: Scenario }> {
   return enqueueStateMutation(async () => {
     const scenarios = await getScenarios();
-    return { scenario: scenarios.find((scenario) => scenario.id === scenarioId) };
+    return {
+      scenario: scenarios.find((scenario) => scenario.id === scenarioId),
+    };
   });
 }
 
@@ -270,7 +329,7 @@ async function exportStoredScenarios(): Promise<ScenarioExport> {
   return enqueueStateMutation(async () => ({
     schemaVersion: "scenario-recorder/export/v1",
     exportedAt: toIsoNow(),
-    scenarios: await getScenarios()
+    scenarios: await getScenarios(),
   }));
 }
 
@@ -279,7 +338,7 @@ function sanitizeStepUrls(step: ScenarioStep): ScenarioStep {
     ...step,
     url: sanitizeUrl(step.url),
     fromUrl: sanitizeOptionalUrl(step.fromUrl),
-    toUrl: sanitizeOptionalUrl(step.toUrl)
+    toUrl: sanitizeOptionalUrl(step.toUrl),
   };
 }
 
@@ -287,7 +346,10 @@ function sanitizeOptionalUrl(url: string | undefined): string | undefined {
   return url ? sanitizeUrl(url) : undefined;
 }
 
-async function handleMessage(message: RuntimeMessage): Promise<unknown> {
+async function handleMessage(
+  message: RuntimeMessage,
+  sender?: chrome.runtime.MessageSender,
+): Promise<unknown> {
   switch (message.type) {
     case "START_RECORDING":
       return startRecording();
@@ -302,7 +364,7 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
     case "GET_RECORDER_STATE":
       return getCurrentRecorderState();
     case "RECORDED_STEP":
-      return recordStep(message.payload.step);
+      return recordStep(message.payload.step, sender?.tab?.id);
     case "SAVE_SCENARIO":
       return saveCurrentScenario(message.payload.name);
     case "DELETE_SCENARIO":
@@ -318,24 +380,28 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
   }
 }
 
-chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
-  void handleMessage(message)
-    .then(sendResponse)
-    .catch((error: unknown) => {
-      sendResponse({ error: error instanceof Error ? error.message : String(error) });
-    });
-  return true;
-});
+chrome.runtime.onMessage.addListener(
+  (message: RuntimeMessage, sender, sendResponse) => {
+    void handleMessage(message, sender)
+      .then(sendResponse)
+      .catch((error: unknown) => {
+        sendResponse({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    return true;
+  },
+);
 
-function seedExistingTabUrls(): void {
-  void loadTabUrls().then(() => chrome.tabs.query({})).then((tabs) => {
-    for (const tab of tabs) {
-      if (tab.id !== undefined && tab.url) {
-        tabUrls.set(tab.id, tab.url);
-      }
+async function initializeTabUrls(): Promise<void> {
+  await loadTabUrls();
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.id !== undefined && tab.url && !tabUrls.has(tab.id)) {
+      tabUrls.set(tab.id, tab.url);
     }
-    return saveTabUrls();
-  });
+  }
+  await saveTabUrls();
 }
 
 chrome.webNavigation.onCommitted.addListener((details) => {
@@ -349,4 +415,4 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void deleteTabUrl(tabId);
 });
 
-seedExistingTabUrls();
+void tabUrlsReady;
