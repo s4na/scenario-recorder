@@ -333,8 +333,11 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "click",
     (event) => {
-      void flushPendingInputs(onStep);
-      recordClick(event, onStep);
+      void flushPendingInputs(onStep, { throwOnError: true })
+        .then(() => recordClick(event, onStep))
+        .catch((error: unknown) => {
+          console.warn("Scenario Recorder skipped click because pending input flush failed.", error);
+        });
     },
     true,
   );

@@ -11,6 +11,7 @@ import type { RecorderState, Scenario, ScenarioExport, ScenarioStep } from "../s
 import { createId, createStepId, sanitizeUrl, shouldReplaceFillStep, toIsoNow } from "../shared/utils";
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
+const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
 let stateMutationQueue: Promise<unknown> = Promise.resolve();
 const tabUrls = new Map<number, string>();
 
@@ -132,7 +133,7 @@ async function recordStep(step: ScenarioStep): Promise<RecorderState> {
 
 async function recordTabNavigation(tabId: number, toUrl: string, title?: string): Promise<void> {
   const fromUrl = tabUrls.get(tabId);
-  tabUrls.set(tabId, toUrl);
+  await setTabUrl(tabId, toUrl);
   if (!fromUrl || fromUrl === toUrl || !isHttpUrl(toUrl)) {
     return;
   }
@@ -149,6 +150,34 @@ async function recordTabNavigation(tabId: number, toUrl: string, title?: string)
 
 function isHttpUrl(url: string): boolean {
   return url.startsWith("http://") || url.startsWith("https://");
+}
+
+async function setTabUrl(tabId: number, url: string): Promise<void> {
+  tabUrls.set(tabId, url);
+  await saveTabUrls();
+}
+
+async function deleteTabUrl(tabId: number): Promise<void> {
+  tabUrls.delete(tabId);
+  await saveTabUrls();
+}
+
+async function saveTabUrls(): Promise<void> {
+  const entries = Array.from(tabUrls.entries()).map(([tabId, url]) => [String(tabId), url]);
+  await chrome.storage.session.set({ [TAB_URLS_STORAGE_KEY]: Object.fromEntries(entries) });
+}
+
+async function loadTabUrls(): Promise<void> {
+  const stored = await chrome.storage.session.get(TAB_URLS_STORAGE_KEY);
+  const value = stored[TAB_URLS_STORAGE_KEY];
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  for (const [tabId, url] of Object.entries(value)) {
+    if (typeof url === "string") {
+      tabUrls.set(Number(tabId), url);
+    }
+  }
 }
 
 function createScenario(name: string, state: RecorderState): Scenario {
@@ -299,12 +328,13 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
 });
 
 function seedExistingTabUrls(): void {
-  void chrome.tabs.query({}).then((tabs) => {
+  void loadTabUrls().then(() => chrome.tabs.query({})).then((tabs) => {
     for (const tab of tabs) {
       if (tab.id !== undefined && tab.url) {
         tabUrls.set(tab.id, tab.url);
       }
     }
+    return saveTabUrls();
   });
 }
 
@@ -316,7 +346,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  tabUrls.delete(tabId);
+  void deleteTabUrl(tabId);
 });
 
 seedExistingTabUrls();
