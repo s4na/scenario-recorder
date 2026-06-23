@@ -53,11 +53,38 @@ function searchableAttributes(element: HTMLElement): string {
     element.getAttribute("name"),
     element.getAttribute("id"),
     element.getAttribute("placeholder"),
-    element.getAttribute("aria-label")
+    element.getAttribute("aria-label"),
+    getAriaLabelledByText(element),
+    getLabelText(element)
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function getAriaLabelledByText(element: HTMLElement): string | undefined {
+  const ids = element.getAttribute("aria-labelledby")?.split(/\s+/) ?? [];
+  const text = ids
+    .map((id) => document.getElementById(id)?.textContent?.trim())
+    .filter(Boolean)
+    .join(" ");
+  return text || undefined;
+}
+
+function getLabelText(element: HTMLElement): string | undefined {
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  ) {
+    const labels = Array.from(element.labels ?? []);
+    const text = labels
+      .map((label) => label.textContent?.trim())
+      .filter(Boolean)
+      .join(" ");
+    return text || undefined;
+  }
+  return undefined;
 }
 
 export function shouldMaskValue(element: HTMLElement): boolean {

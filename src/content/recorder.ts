@@ -30,6 +30,7 @@ const pendingInputs = new Map<
 >();
 let lastClickSignature = "";
 let lastClickTimestamp = 0;
+let lastClickTarget: HTMLElement | undefined;
 let cachedRecording = false;
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
@@ -151,9 +152,14 @@ async function recordClick(
 
   const signature = `${location.href}:${target.tagName}:${target.id}:${target.textContent}`;
   const now = Date.now();
-  if (signature === lastClickSignature && now - lastClickTimestamp < 250) {
+  if (
+    target === lastClickTarget &&
+    signature === lastClickSignature &&
+    now - lastClickTimestamp < 250
+  ) {
     return;
   }
+  lastClickTarget = target;
   lastClickSignature = signature;
   lastClickTimestamp = now;
 
