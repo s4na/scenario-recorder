@@ -123,13 +123,20 @@ function sanitizeHash(hash: string): string {
 
 function sanitizePath(pathname: string): string {
   const segments = pathname.split("/");
+  let redactingTail = false;
   return segments
-    .map((segment, index) => {
+    .map((segment) => {
       if (!segment) {
         return segment;
       }
-      const previous = segments[index - 1] ?? "";
-      return isSecretPathMarker(previous) ? "{{SECRET}}" : segment;
+      if (redactingTail) {
+        return "{{SECRET}}";
+      }
+      if (isSecretPathMarker(segment)) {
+        redactingTail = true;
+        return segment;
+      }
+      return segment;
     })
     .join("/");
 }

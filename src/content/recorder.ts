@@ -14,12 +14,12 @@ type PendingInput = {
   timer: number;
   context: StepContext;
   sequence: number;
+  step: ScenarioStep;
 };
 type PendingFillSend = {
   element: HTMLInputElement | HTMLTextAreaElement;
   sequence: number;
   step: ScenarioStep;
-  send: Promise<void>;
 };
 
 const INPUT_DEBOUNCE_MS = 300;
@@ -168,13 +168,20 @@ function sanitizeHash(hash: string): string {
 
 function sanitizePath(pathname: string): string {
   const segments = pathname.split("/");
+  let redactingTail = false;
   return segments
-    .map((segment, index) => {
+    .map((segment) => {
       if (!segment) {
         return segment;
       }
-      const previous = segments[index - 1] ?? "";
-      return isSecretPathMarker(previous) ? "{{SECRET}}" : segment;
+      if (redactingTail) {
+        return "{{SECRET}}";
+      }
+      if (isSecretPathMarker(segment)) {
+        redactingTail = true;
+        return segment;
+      }
+      return segment;
     })
     .join("/");
 }
@@ -316,21 +323,23 @@ function scheduleFill(
   const context = createStepContext();
   const sequence = pendingInputSequence + 1;
   pendingInputSequence = sequence;
+  const step: ScenarioStep = {
+    id: createStepId(),
+    ...createBaseStep("fill", context),
+    target: createTargetSnapshot(element),
+    value: maskValue(element, getInputValue(element)),
+  };
 
   const timer = window.setTimeout(async () => {
     pendingInputs.delete(element);
     if (isDisabledElement(element) || !isRecording()) {
       return;
     }
-    void onStep({
-      id: createStepId(),
-      ...createBaseStep("fill", context),
-      target: createTargetSnapshot(element),
-      value: maskValue(element, getInputValue(element)),
-    });
+    void onStep(step);
   }, INPUT_DEBOUNCE_MS);
 
-  pendingInputs.set(element, { timer, context, sequence });
+  pendingInputs.set(element, { timer, context, sequence, step });
+  void sendPendingInputNow(element, onStep);
 }
 
 function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
@@ -411,7 +420,9 @@ export async function flushPendingInputs(
   onStep: StepHandler,
   options: FlushOptions = {},
 ): Promise<void> {
-  const pendingEntries = Array.from(pendingInputs.entries());
+  const pendingEntries = Array.from(pendingInputs.entries()).sort(
+    ([, first], [, second]) => first.sequence - second.sequence,
+  );
   const sends: PendingFillSend[] = [];
   for (const [element, pending] of pendingEntries) {
     window.clearTimeout(pending.timer);
@@ -419,26 +430,13 @@ export async function flushPendingInputs(
     if (isDisabledElement(element) || !isRecording()) {
       continue;
     }
-    const step: ScenarioStep = {
-      id: createStepId(),
-      ...createBaseStep("fill", pending.context),
-      target: createTargetSnapshot(element),
-      value: maskValue(element, getInputValue(element)),
-    };
     sends.push({
       element,
       sequence: pending.sequence,
-      step,
-      send: new Promise<void>((resolve, reject) => {
-        try {
-          Promise.resolve(onStep(step)).then(resolve, reject);
-        } catch (error) {
-          reject(error);
-        }
-      }),
+      step: pending.step,
     });
   }
-  const results = await Promise.allSettled(sends.map(({ send }) => send));
+  const results = await sendPendingFillsInOrder(sends, onStep);
   const failure = results.find(
     (result): result is PromiseRejectedResult => result.status === "rejected",
   );
@@ -451,6 +449,23 @@ export async function flushPendingInputs(
       ? failure.reason
       : new Error(String(failure.reason));
   }
+}
+
+async function sendPendingFillsInOrder(
+  sends: PendingFillSend[],
+  onStep: StepHandler,
+): Promise<Array<PromiseSettledResult<void>>> {
+  const results: Array<PromiseSettledResult<void>> = [];
+  for (const pending of sends) {
+    try {
+      await onStep(pending.step);
+      results.push({ status: "fulfilled", value: undefined });
+    } catch (reason) {
+      results.push({ status: "rejected", reason });
+      break;
+    }
+  }
+  return results;
 }
 
 function restoreFailedPendingInputs(
@@ -479,6 +494,27 @@ function restoreFailedPendingInputs(
       timer,
       context: { url: step.url, title: step.title ?? "" },
       sequence,
+      step,
     });
+  }
+}
+
+async function sendPendingInputNow(
+  element: HTMLInputElement | HTMLTextAreaElement,
+  onStep: StepHandler,
+): Promise<void> {
+  const pending = pendingInputs.get(element);
+  if (!pending || isDisabledElement(element) || !isRecording()) {
+    return;
+  }
+  try {
+    await onStep(pending.step);
+    const current = pendingInputs.get(element);
+    if (current?.sequence === pending.sequence) {
+      window.clearTimeout(current.timer);
+      pendingInputs.delete(element);
+    }
+  } catch {
+    // Keep the pending snapshot for the debounce retry or an explicit flush.
   }
 }

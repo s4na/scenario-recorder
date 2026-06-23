@@ -176,15 +176,20 @@ function sanitizeHash(hash: string): string {
 
 function sanitizePath(pathname: string): string {
   const segments = pathname.split("/");
-  return segments
-    .map((segment, index) => {
-      if (!segment) {
-        return segment;
-      }
-      const previous = segments[index - 1] ?? "";
-      return isSecretPathMarker(previous) ? "{{SECRET}}" : segment;
-    })
-    .join("/");
+  let redactingTail = false;
+  return segments.map((segment) => {
+    if (!segment) {
+      return segment;
+    }
+    if (redactingTail) {
+      return "{{SECRET}}";
+    }
+    if (isSecretPathMarker(segment)) {
+      redactingTail = true;
+      return segment;
+    }
+    return segment;
+  }).join("/");
 }
 
 function isSecretPathMarker(segment: string): boolean {
