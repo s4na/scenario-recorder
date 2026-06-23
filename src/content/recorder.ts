@@ -200,9 +200,7 @@ function isSecretPathMarker(segment: string): boolean {
 function shouldRedactHashPath(rawHash: string): boolean {
   const normalized = safeDecode(rawHash).toLowerCase();
   const segments = normalized.split(/[/?#&=]+/);
-  return segments.some((segment) =>
-    SECRET_PATH_MARKERS.includes(segment),
-  );
+  return segments.some((segment) => SECRET_PATH_MARKERS.includes(segment));
 }
 
 function safeDecode(value: string): string {
@@ -277,7 +275,10 @@ function getComposedElement(event: Event): HTMLElement | undefined {
     .find((item): item is HTMLElement => item instanceof HTMLElement);
 }
 
-function recordClick(event: MouseEvent, onStep: StepHandler): void {
+async function recordClick(
+  event: MouseEvent,
+  onStep: StepHandler,
+): Promise<void> {
   const targetElement = getComposedElement(event);
   if (!targetElement) {
     return;
@@ -299,21 +300,23 @@ function recordClick(event: MouseEvent, onStep: StepHandler): void {
   lastClickSignature = signature;
   lastClickTimestamp = now;
 
-  void onStep({
+  await onStep({
     id: createStepId(),
     ...createBaseStep("click"),
     target: createTargetSnapshot(target),
   });
 }
 
-async function flushAndRecordClick(event: MouseEvent, onStep: StepHandler): Promise<void> {
+async function flushAndRecordClick(
+  event: MouseEvent,
+  onStep: StepHandler,
+): Promise<void> {
   if (!isRecording()) {
     return;
   }
   const navigationTarget = getNavigationClickTarget(event);
   if (navigationTarget && replayedClicks.has(navigationTarget)) {
     replayedClicks.delete(navigationTarget);
-    await flushPendingInputs(onStep, { throwOnError: true });
     return;
   }
   if (navigationTarget) {
@@ -321,22 +324,31 @@ async function flushAndRecordClick(event: MouseEvent, onStep: StepHandler): Prom
     event.stopImmediatePropagation();
     try {
       await flushPendingInputs(onStep, { throwOnError: true });
-      recordClick(event, onStep);
+      await recordClick(event, onStep);
+    } catch (error) {
+      console.warn(
+        "Scenario Recorder could not persist navigation click before replay.",
+        error,
+      );
+    } finally {
       replayedClicks.add(navigationTarget);
       navigationTarget.click();
       replayedClicks.delete(navigationTarget);
-    } catch (error) {
-      replayedClicks.delete(navigationTarget);
-      console.warn("Scenario Recorder skipped navigation click because pending input flush failed.", error);
     }
     return;
   }
   await flushPendingInputs(onStep, { throwOnError: true });
-  recordClick(event, onStep);
+  await recordClick(event, onStep);
 }
 
 function getNavigationClickTarget(event: MouseEvent): HTMLElement | undefined {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
     return undefined;
   }
   const targetElement = getComposedElement(event);
@@ -363,11 +375,15 @@ function getNavigationClickTarget(event: MouseEvent): HTMLElement | undefined {
   return undefined;
 }
 
-async function flushAndReplaySubmit(event: SubmitEvent, onStep: StepHandler): Promise<void> {
+async function flushAndReplaySubmit(
+  event: SubmitEvent,
+  onStep: StepHandler,
+): Promise<void> {
   if (!isRecording()) {
     return;
   }
-  const form = event.target instanceof HTMLFormElement ? event.target : undefined;
+  const form =
+    event.target instanceof HTMLFormElement ? event.target : undefined;
   if (!form) {
     await flushPendingInputs(onStep);
     return;
@@ -375,25 +391,30 @@ async function flushAndReplaySubmit(event: SubmitEvent, onStep: StepHandler): Pr
   const submitter = getSubmitter(event);
   if (replayedSubmits.has(form)) {
     replayedSubmits.delete(form);
-    await flushPendingInputs(onStep);
     return;
   }
   event.preventDefault();
   event.stopImmediatePropagation();
   try {
     await flushPendingInputs(onStep, { throwOnError: true });
+  } catch (error) {
+    console.warn(
+      "Scenario Recorder could not flush pending input before form submit.",
+      error,
+    );
+  } finally {
     replayedSubmits.add(form);
     form.requestSubmit(submitter);
     replayedSubmits.delete(form);
-  } catch (error) {
-    replayedSubmits.delete(form);
-    console.warn("Scenario Recorder skipped form submit because pending input flush failed.", error);
   }
 }
 
 function getSubmitter(event: SubmitEvent): HTMLElement | undefined {
   const submitter = event.submitter;
-  if (submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement) {
+  if (
+    submitter instanceof HTMLButtonElement ||
+    submitter instanceof HTMLInputElement
+  ) {
     return submitter;
   }
   return undefined;
@@ -423,7 +444,11 @@ function scheduleFill(
     if (isDisabledElement(element) || !isRecording()) {
       return;
     }
-    void sendPendingStepWithRestore(element, { timer, context, sequence, step }, onStep);
+    void sendPendingStepWithRestore(
+      element,
+      { timer, context, sequence, step },
+      onStep,
+    );
   }, INPUT_DEBOUNCE_MS);
 
   pendingInputs.set(element, { timer, context, sequence, step });
@@ -433,11 +458,15 @@ function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
   if (isDisabledElement(element) || !isRecording()) {
     return;
   }
-  void onStep({
-    id: createStepId(),
-    ...createBaseStep("select"),
-    target: createTargetSnapshot(element),
-    value: maskValue(element, getInputValue(element)),
+  void Promise.resolve(
+    onStep({
+      id: createStepId(),
+      ...createBaseStep("select"),
+      target: createTargetSnapshot(element),
+      value: maskValue(element, getInputValue(element)),
+    }),
+  ).catch((error: unknown) => {
+    console.warn("Scenario Recorder failed to record select.", error);
   });
 }
 
