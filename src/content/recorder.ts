@@ -307,6 +307,9 @@ function recordClick(event: MouseEvent, onStep: StepHandler): void {
 }
 
 async function flushAndRecordClick(event: MouseEvent, onStep: StepHandler): Promise<void> {
+  if (!isRecording()) {
+    return;
+  }
   const navigationTarget = getNavigationClickTarget(event);
   if (navigationTarget && replayedClicks.has(navigationTarget)) {
     replayedClicks.delete(navigationTarget);
@@ -361,6 +364,9 @@ function getNavigationClickTarget(event: MouseEvent): HTMLElement | undefined {
 }
 
 async function flushAndReplaySubmit(event: SubmitEvent, onStep: StepHandler): Promise<void> {
+  if (!isRecording()) {
+    return;
+  }
   const form = event.target instanceof HTMLFormElement ? event.target : undefined;
   if (!form) {
     await flushPendingInputs(onStep);

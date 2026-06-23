@@ -23,7 +23,6 @@ import {
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
-const NAVIGATION_RECORD_DELAY_MS = 500;
 let stateMutationQueue: Promise<unknown> = Promise.resolve();
 const tabUrls = new Map<number, string>();
 const tabUrlsReady = initializeTabUrls();
@@ -180,7 +179,6 @@ async function recordTabNavigation(
   if (!isHttpUrl(toUrl) || fromUrl === toUrl) {
     return;
   }
-  await delay(NAVIGATION_RECORD_DELAY_MS);
   await recordStep({
     id: createStepId(),
     type: "navigation",
@@ -194,12 +192,6 @@ async function recordTabNavigation(
 
 function isHttpUrl(url: string): boolean {
   return url.startsWith("http://") || url.startsWith("https://");
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
 }
 
 async function setTabUrl(tabId: number, url: string): Promise<void> {
