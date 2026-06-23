@@ -145,7 +145,7 @@ function sanitizeHash(hash: string): string {
   const queryIndex = rawHash.indexOf("?");
   const paramText = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash;
   if (!paramText.includes("=")) {
-    return SECRET_URL_KEYS.some((key) => rawHash.toLowerCase().includes(key)) ? "#{{SECRET}}" : hash;
+    return shouldRedactHashPath(rawHash) ? "#{{SECRET}}" : hash;
   }
 
   const hashParams = new URLSearchParams(paramText);
@@ -183,6 +183,17 @@ function sanitizePath(pathname: string): string {
 function isSecretPathMarker(segment: string): boolean {
   const normalized = safeDecode(segment).toLowerCase();
   return SECRET_PATH_MARKERS.some((marker) => normalized === marker || normalized.includes(marker));
+}
+
+function shouldRedactHashPath(rawHash: string): boolean {
+  const normalized = safeDecode(rawHash).toLowerCase();
+  if (SECRET_URL_KEYS.some((key) => normalized.includes(key))) {
+    return true;
+  }
+  const segments = normalized.split(/[/?#&=]+/);
+  return segments.some((segment) =>
+    SECRET_PATH_MARKERS.some((marker) => segment === marker || segment.includes(marker))
+  );
 }
 
 function safeDecode(value: string): string {

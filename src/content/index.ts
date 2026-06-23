@@ -160,10 +160,13 @@ function safeDecode(value: string): string {
 }
 
 async function sendStep(step: ScenarioStep): Promise<void> {
-  await chrome.runtime.sendMessage({
+  const response = await chrome.runtime.sendMessage({
     type: "RECORDED_STEP",
     payload: { step },
   });
+  if (response && typeof response === "object" && "error" in response) {
+    throw new Error(String(response.error));
+  }
 }
 
 installRecorder(sendStep);
@@ -173,7 +176,13 @@ chrome.runtime.onMessage.addListener(
     if (message.type !== "FLUSH_PENDING_INPUTS") {
       return false;
     }
-    void flushPendingInputs(sendStep).then(() => sendResponse({ ok: true }));
+    void flushPendingInputs(sendStep, { throwOnError: true })
+      .then(() => sendResponse({ ok: true }))
+      .catch((error: unknown) => {
+        sendResponse({
+          error: error instanceof Error ? error.message : "Failed to flush pending inputs",
+        });
+      });
     return true;
   },
 );
@@ -184,7 +193,7 @@ watchNavigation((fromUrl, toUrl) => {
       if (!recording) {
         return;
       }
-      await flushPendingInputs(sendStep);
+      await flushPendingInputs(sendStep, { throwOnError: true });
       await sendStep({
         id: createStepId(),
         type: "navigation",

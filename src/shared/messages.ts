@@ -64,7 +64,7 @@ export type RuntimeResponse<TType extends MessageType> = MessageMap[TType]["resp
 export type ContentMessageMap = {
   FLUSH_PENDING_INPUTS: {
     payload: undefined;
-    response: { ok: true };
+    response: { ok: true } | { error: string };
   };
 };
 

@@ -25,6 +25,14 @@ function allScenariosFileName(): string {
   return `scenario-recorder-export-${formatTimestampForFile()}.json`;
 }
 
+function isContentScriptUnavailableError(message: string): boolean {
+  return (
+    message.includes("Could not establish connection") ||
+    message.includes("Receiving end does not exist") ||
+    message.includes("Cannot access")
+  );
+}
+
 export default function App() {
   const [state, setState] = useState<RecorderState>(EMPTY_STATE);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -83,9 +91,16 @@ export default function App() {
     }
     try {
       const message: ContentMessage<"FLUSH_PENDING_INPUTS"> = { type: "FLUSH_PENDING_INPUTS" };
-      await chrome.tabs.sendMessage(tab.id, message);
-    } catch {
-      // The active tab may be a Chrome page or a page where the content script is unavailable.
+      const response = await chrome.tabs.sendMessage(tab.id, message);
+      if (response && typeof response === "object" && "error" in response) {
+        throw new Error(String(response.error));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isContentScriptUnavailableError(message)) {
+        return;
+      }
+      throw error;
     }
   }
 

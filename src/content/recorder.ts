@@ -3,6 +3,9 @@ import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
 
 type StepHandler = (step: ScenarioStep) => void | Promise<void>;
+type FlushOptions = {
+  throwOnError?: boolean;
+};
 
 const INPUT_DEBOUNCE_MS = 300;
 const inputTimers = new Map<HTMLInputElement | HTMLTextAreaElement, number>();
@@ -358,9 +361,9 @@ export function installRecorder(onStep: StepHandler): void {
   });
 }
 
-export async function flushPendingInputs(onStep: StepHandler): Promise<void> {
+export async function flushPendingInputs(onStep: StepHandler, options: FlushOptions = {}): Promise<void> {
   const pendingElements = Array.from(inputTimers.keys());
-  const sends: Array<void | Promise<void>> = [];
+  const sends: Array<Promise<void>> = [];
   for (const element of pendingElements) {
     const timer = inputTimers.get(element);
     if (timer) {
@@ -371,13 +374,22 @@ export async function flushPendingInputs(onStep: StepHandler): Promise<void> {
       continue;
     }
     sends.push(
-      onStep({
-        id: createStepId(),
-        ...createBaseStep("fill"),
-        target: createTargetSnapshot(element),
-        value: maskValue(element, getInputValue(element)),
-      }),
+      Promise.resolve().then(() =>
+        onStep({
+          id: createStepId(),
+          ...createBaseStep("fill"),
+          target: createTargetSnapshot(element),
+          value: maskValue(element, getInputValue(element)),
+        }),
+      ).then(() => undefined),
     );
   }
-  await Promise.allSettled(sends);
+  const results = await Promise.allSettled(sends);
+  if (!options.throwOnError) {
+    return;
+  }
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure) {
+    throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
+  }
 }
