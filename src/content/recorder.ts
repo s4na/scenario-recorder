@@ -22,14 +22,15 @@ type PendingFillSend = {
   sequence: number;
   step: ScenarioStep;
 };
-type ActivationDetails = {
-  replayTarget: HTMLElement;
-};
 
-const INPUT_DEBOUNCE_MS = 300;
+const RETRY_DELAY_MS = 300;
 const pendingInputs = new Map<
   HTMLInputElement | HTMLTextAreaElement,
   PendingInput
+>();
+const latestInputSequences = new WeakMap<
+  HTMLInputElement | HTMLTextAreaElement,
+  number
 >();
 let lastClickSignature = "";
 let lastClickTimestamp = 0;
@@ -38,7 +39,6 @@ let cachedRecording = false;
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
 const replayingSubmits = new WeakSet<HTMLFormElement>();
-const replayingActivations = new WeakSet<HTMLElement>();
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -142,6 +142,12 @@ function isToggleInput(element: HTMLElement): element is HTMLInputElement {
   );
 }
 
+function invalidatePendingFill(element: HTMLInputElement | HTMLTextAreaElement): void {
+  const sequence = pendingInputSequence + 1;
+  pendingInputSequence = sequence;
+  latestInputSequences.set(element, sequence);
+}
+
 function getComposedElement(event: Event): HTMLElement | undefined {
   return event
     .composedPath()
@@ -195,48 +201,6 @@ async function flushAndRecordClick(
   if (!event.isTrusted) {
     return;
   }
-  if (
-    event.button !== 0 ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.shiftKey ||
-    event.altKey
-  ) {
-    await recordClick(event, onStep);
-    return;
-  }
-  const activation = getActivationDetails(event);
-  if (activation && replayingActivations.has(activation.replayTarget)) {
-    replayingActivations.delete(activation.replayTarget);
-    return;
-  }
-  if (
-    activation &&
-    event.cancelable &&
-    (pendingInputs.size > 0 || activeFlush)
-  ) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    await flushTrackedPendingInputs(onStep, { throwOnError: true }).catch(
-      (error: unknown) => {
-        console.warn(
-          "Scenario Recorder could not flush pending input before activation.",
-          error,
-        );
-      },
-    );
-    try {
-      await recordClick(event, onStep);
-    } catch (error) {
-      console.warn(
-        "Scenario Recorder could not record click after pending input flush.",
-        error,
-      );
-    } finally {
-      replayActivation(activation);
-    }
-    return;
-  }
   await recordClick(event, onStep);
 }
 
@@ -251,31 +215,6 @@ function flushBeforeActivation(event: Event, onStep: StepHandler): void {
   void flushTrackedPendingInputs(onStep).catch((error: unknown) => {
     console.warn("Scenario Recorder failed to flush before activation.", error);
   });
-}
-
-function getActivationDetails(event: Event): ActivationDetails | undefined {
-  const target = getComposedElement(event);
-  const activationTarget =
-    target?.closest<HTMLElement>(
-      "a[href],button,input[type='button'],input[type='submit'],input[type='reset'],[role='button'],[role='link']",
-    ) ?? undefined;
-  if (!target || !activationTarget) {
-    return undefined;
-  }
-  return {
-    replayTarget: activationTarget,
-  };
-}
-
-function replayActivation(activation: ActivationDetails): void {
-  replayingActivations.add(activation.replayTarget);
-  try {
-    activation.replayTarget.click();
-  } finally {
-    window.setTimeout(() => {
-      replayingActivations.delete(activation.replayTarget);
-    }, 0);
-  }
 }
 
 async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promise<void> {
@@ -418,9 +357,14 @@ function scheduleFill(
     window.clearTimeout(oldPending.timer);
     pendingInputs.delete(element);
   }
+  if (isDisabledElement(element) || !isRecording()) {
+    invalidatePendingFill(element);
+    return;
+  }
   const context = createStepContext();
   const sequence = pendingInputSequence + 1;
   pendingInputSequence = sequence;
+  latestInputSequences.set(element, sequence);
   const step: ScenarioStep = {
     id: createStepId(),
     ...createBaseStep("fill", context),
@@ -428,19 +372,29 @@ function scheduleFill(
     value,
   };
 
-  const timer = window.setTimeout(async () => {
-    pendingInputs.delete(element);
-    if (isDisabledElement(element) || !isRecording()) {
-      return;
-    }
-    void sendPendingStepWithRestore(
-      element,
-      { timer, context, sequence, step },
-      onStep,
-    );
-  }, INPUT_DEBOUNCE_MS);
+  const timer = 0;
+  const pending = { timer, context, sequence, step };
+  pendingInputs.set(element, pending);
+  trackImmediateFillSend(
+    element,
+    pending,
+    onStep,
+  );
+}
 
-  pendingInputs.set(element, { timer, context, sequence, step });
+function trackImmediateFillSend(
+  element: HTMLInputElement | HTMLTextAreaElement,
+  pending: PendingInput,
+  onStep: StepHandler,
+): void {
+  const previousFlush = activeFlush?.catch(() => undefined) ?? Promise.resolve();
+  const send = sendPendingStepWithRestore(element, pending, onStep);
+  const tracked = Promise.allSettled([previousFlush, send]).then(() => undefined).finally(() => {
+    if (activeFlush === tracked) {
+      activeFlush = undefined;
+    }
+  });
+  activeFlush = tracked;
 }
 
 function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
@@ -552,6 +506,14 @@ export async function flushPendingInputs(
   onStep: StepHandler,
   options: FlushOptions = {},
 ): Promise<void> {
+  await activeFlush?.catch(() => undefined);
+  await flushPendingInputsNow(onStep, options);
+}
+
+async function flushPendingInputsNow(
+  onStep: StepHandler,
+  options: FlushOptions = {},
+): Promise<void> {
   const pendingEntries = Array.from(pendingInputs.entries()).sort(
     ([, first], [, second]) => first.sequence - second.sequence,
   );
@@ -589,7 +551,7 @@ function flushTrackedPendingInputs(
 ): Promise<void> {
   const next = (activeFlush ?? Promise.resolve())
     .catch(() => undefined)
-    .then(() => flushPendingInputs(onStep, options));
+    .then(() => flushPendingInputsNow(onStep, options));
   const tracked = next.finally(() => {
     if (activeFlush === tracked) {
       activeFlush = undefined;
@@ -606,6 +568,14 @@ async function sendPendingFillsInOrder(
   const results: Array<PromiseSettledResult<void>> = [];
   for (const pending of sends) {
     try {
+      if (
+        latestInputSequences.get(pending.element) !== pending.sequence ||
+        isDisabledElement(pending.element) ||
+        !isRecording()
+      ) {
+        results.push({ status: "fulfilled", value: undefined });
+        continue;
+      }
       await onStep(pending.step);
       results.push({ status: "fulfilled", value: undefined });
     } catch (reason) {
@@ -631,6 +601,13 @@ function restoreFailedPendingInputs(
       continue;
     }
     const sequence = sends[index].sequence;
+    if (
+      latestInputSequences.get(element) !== sequence ||
+      isDisabledElement(element) ||
+      !isRecording()
+    ) {
+      continue;
+    }
     const step = sends[index].step;
     const pending = {
       timer: 0,
@@ -640,9 +617,36 @@ function restoreFailedPendingInputs(
     };
     pending.timer = window.setTimeout(() => {
       void flushPendingInputs(onStep);
-    }, INPUT_DEBOUNCE_MS);
+    }, RETRY_DELAY_MS);
     pendingInputs.set(element, pending);
   }
+}
+
+function schedulePendingRetry(
+  element: HTMLInputElement | HTMLTextAreaElement,
+  pending: PendingInput,
+  onStep: StepHandler,
+): void {
+  const existing = pendingInputs.get(element);
+  if (existing && existing.sequence !== pending.sequence) {
+    return;
+  }
+  if (
+    latestInputSequences.get(element) !== pending.sequence ||
+    pendingInputs.get(element)?.sequence !== pending.sequence ||
+    isDisabledElement(element) ||
+    !isRecording()
+  ) {
+    pendingInputs.delete(element);
+    return;
+  }
+  if (existing?.timer) {
+    window.clearTimeout(existing.timer);
+  }
+  const timer = window.setTimeout(() => {
+    void flushPendingInputs(onStep);
+  }, RETRY_DELAY_MS);
+  pendingInputs.set(element, { ...pending, timer });
 }
 
 async function sendPendingStepWithRestore(
@@ -650,14 +654,25 @@ async function sendPendingStepWithRestore(
   pending: PendingInput,
   onStep: StepHandler,
 ): Promise<void> {
+  if (
+    latestInputSequences.get(element) !== pending.sequence ||
+    isDisabledElement(element) ||
+    !isRecording()
+  ) {
+    if (pendingInputs.get(element)?.sequence === pending.sequence) {
+      pendingInputs.delete(element);
+    }
+    return;
+  }
   try {
     await onStep(pending.step);
-  } catch {
-    if (!pendingInputs.has(element)) {
-      const timer = window.setTimeout(() => {
-        void flushPendingInputs(onStep);
-      }, INPUT_DEBOUNCE_MS);
-      pendingInputs.set(element, { ...pending, timer });
+    if (
+      pendingInputs.get(element)?.sequence === pending.sequence &&
+      latestInputSequences.get(element) === pending.sequence
+    ) {
+      pendingInputs.delete(element);
     }
+  } catch {
+    schedulePendingRetry(element, pending, onStep);
   }
 }

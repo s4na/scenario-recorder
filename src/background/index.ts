@@ -17,6 +17,7 @@ import {
   createId,
   createStepId,
   sanitizeUrl,
+  shouldReplaceFillStep,
   toIsoNow,
 } from "../shared/utils";
 
@@ -41,9 +42,19 @@ function withUpdatedStep(
     (first, second) => first.timestamp - second.timestamp,
   );
 
+  replaceAdjacentFillSteps(currentSteps);
   removeAdjacentDuplicateNavigationSteps(currentSteps);
 
   return { ...state, currentSteps };
+}
+
+function replaceAdjacentFillSteps(steps: ScenarioStep[]): void {
+  for (let index = 1; index < steps.length; index += 1) {
+    if (shouldReplaceFillStep(steps[index - 1], steps[index])) {
+      steps.splice(index - 1, 1);
+      index -= 1;
+    }
+  }
 }
 
 function removeAdjacentDuplicateNavigationSteps(steps: ScenarioStep[]): void {
