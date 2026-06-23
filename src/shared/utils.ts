@@ -198,7 +198,7 @@ function sanitizePath(pathname: string): string {
 
 function isSecretPathMarker(segment: string): boolean {
   const normalized = safeDecode(segment).toLowerCase();
-  return SECRET_PATH_MARKERS.some((marker) => normalized === marker || normalized.includes(marker));
+  return SECRET_PATH_MARKERS.includes(normalized);
 }
 
 function shouldRedactHashPath(rawHash: string): boolean {
@@ -208,7 +208,7 @@ function shouldRedactHashPath(rawHash: string): boolean {
   }
   const segments = normalized.split(/[/?#&=]+/);
   return segments.some((segment) =>
-    SECRET_PATH_MARKERS.some((marker) => segment === marker || segment.includes(marker))
+    SECRET_PATH_MARKERS.includes(segment)
   );
 }
 

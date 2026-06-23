@@ -192,9 +192,7 @@ function sanitizePath(pathname: string): string {
 
 function isSecretPathMarker(segment: string): boolean {
   const normalized = safeDecode(segment).toLowerCase();
-  return SECRET_PATH_MARKERS.some(
-    (marker) => normalized === marker || normalized.includes(marker),
-  );
+  return SECRET_PATH_MARKERS.includes(normalized);
 }
 
 function shouldRedactHashPath(rawHash: string): boolean {
@@ -208,9 +206,7 @@ function shouldRedactHashPath(rawHash: string): boolean {
   }
   const segments = normalized.split(/[/?#&=]+/);
   return segments.some((segment) =>
-    SECRET_PATH_MARKERS.some(
-      (marker) => segment === marker || segment.includes(marker),
-    ),
+    SECRET_PATH_MARKERS.includes(segment),
   );
 }
 
@@ -339,7 +335,7 @@ function scheduleFill(
     if (isDisabledElement(element) || !isRecording()) {
       return;
     }
-    void onStep(step);
+    void sendPendingStepWithRestore(element, { timer, context, sequence, step }, onStep);
   }, INPUT_DEBOUNCE_MS);
 
   pendingInputs.set(element, { timer, context, sequence, step });
@@ -488,19 +484,41 @@ function restoreFailedPendingInputs(
     }
     const sequence = sends[index].sequence;
     const step = sends[index].step;
-    const timer = window.setTimeout(() => {
+    const pending = {
+      timer: 0,
+      context: { url: step.url, title: step.title ?? "" },
+      sequence,
+      step,
+    };
+    pending.timer = window.setTimeout(() => {
       pendingInputs.delete(element);
       if (isDisabledElement(element) || !isRecording()) {
         return;
       }
-      void onStep(step);
+      void sendPendingStepWithRestore(element, pending, onStep);
     }, INPUT_DEBOUNCE_MS);
-    pendingInputs.set(element, {
-      timer,
-      context: { url: step.url, title: step.title ?? "" },
-      sequence,
-      step,
-    });
+    pendingInputs.set(element, pending);
+  }
+}
+
+async function sendPendingStepWithRestore(
+  element: HTMLInputElement | HTMLTextAreaElement,
+  pending: PendingInput,
+  onStep: StepHandler,
+): Promise<void> {
+  try {
+    await onStep(pending.step);
+  } catch {
+    if (!pendingInputs.has(element)) {
+      const timer = window.setTimeout(() => {
+        pendingInputs.delete(element);
+        if (isDisabledElement(element) || !isRecording()) {
+          return;
+        }
+        void sendPendingStepWithRestore(element, { ...pending, timer }, onStep);
+      }, INPUT_DEBOUNCE_MS);
+      pendingInputs.set(element, { ...pending, timer });
+    }
   }
 }
 
