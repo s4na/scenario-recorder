@@ -41,7 +41,7 @@ export default function App() {
   const [notice, setNotice] = useState<Notice | undefined>();
   const [isBusy, setIsBusy] = useState(false);
 
-  const canStart = state.status === "idle";
+  const canStart = state.status === "idle" && state.currentSteps.length === 0;
   const canPause = state.status === "recording";
   const canResume = state.status === "paused";
   const canStop = state.status === "recording" || state.status === "paused";
