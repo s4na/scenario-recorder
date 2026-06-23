@@ -1,3 +1,4 @@
+import type { RuntimeMessage } from "../shared/messages";
 import type { ScenarioStep } from "../shared/types";
 import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
@@ -38,6 +39,7 @@ let lastClickTarget: HTMLElement | undefined;
 let cachedRecording = false;
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
+let recordingTargetRefreshSequence = 0;
 const replayingSubmits = new WeakSet<HTMLFormElement>();
 
 function createStepId(): string {
@@ -47,24 +49,36 @@ function createStepId(): string {
     .join("")}`;
 }
 
-function updateCachedRecording(state: unknown): void {
-  const recorderState = (
-    state as Record<string, { status?: string } | undefined>
-  )["scenarioRecorder.recorderState"];
-  cachedRecording = recorderState?.status === "recording";
+async function refreshRecordingTargetCache(): Promise<void> {
+  const refreshSequence = recordingTargetRefreshSequence + 1;
+  recordingTargetRefreshSequence = refreshSequence;
+  const message: RuntimeMessage<"IS_RECORDING_TARGET"> = { type: "IS_RECORDING_TARGET" };
+  const response = await chrome.runtime.sendMessage(message);
+  if (recordingTargetRefreshSequence !== refreshSequence) {
+    return;
+  }
+  cachedRecording = Boolean(response?.recording);
+}
+
+function markRecordingTargetUnavailable(error: unknown, refreshSequence: number): void {
+  if (recordingTargetRefreshSequence === refreshSequence) {
+    cachedRecording = false;
+  }
+  console.warn("Scenario Recorder failed to refresh target recording state.", error);
 }
 
 function initializeRecordingCache(): void {
-  void chrome.storage.local
-    .get("scenarioRecorder.recorderState")
-    .then(updateCachedRecording);
+  const initialRefresh = recordingTargetRefreshSequence + 1;
+  void refreshRecordingTargetCache().catch((error: unknown) => {
+    markRecordingTargetUnavailable(error, initialRefresh);
+  });
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local" || !changes["scenarioRecorder.recorderState"]) {
       return;
     }
-    updateCachedRecording({
-      "scenarioRecorder.recorderState":
-        changes["scenarioRecorder.recorderState"].newValue,
+    const refreshSequence = recordingTargetRefreshSequence + 1;
+    void refreshRecordingTargetCache().catch((error: unknown) => {
+      markRecordingTargetUnavailable(error, refreshSequence);
     });
   });
 }

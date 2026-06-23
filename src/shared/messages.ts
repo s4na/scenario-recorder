@@ -25,6 +25,10 @@ export type MessageMap = {
     payload: undefined;
     response: RecorderState;
   };
+  IS_RECORDING_TARGET: {
+    payload: undefined;
+    response: { recording: boolean };
+  };
   RECORDED_STEP: {
     payload: { step: ScenarioStep };
     response: RecorderState;

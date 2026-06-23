@@ -438,6 +438,16 @@ async function exportStoredScenarios(): Promise<ScenarioExport> {
   }));
 }
 
+async function isRecordingTarget(tabId: number | undefined): Promise<{ recording: boolean }> {
+  if (tabId === undefined) {
+    return { recording: false };
+  }
+  const state = await getRecorderState();
+  return {
+    recording: state.status === "recording" && state.targetTabId === tabId,
+  };
+}
+
 function sanitizeStepUrls(step: ScenarioStep): ScenarioStep {
   return {
     ...step,
@@ -468,6 +478,8 @@ async function handleMessage(
       return clearCurrentRecording();
     case "GET_RECORDER_STATE":
       return getCurrentRecorderState();
+    case "IS_RECORDING_TARGET":
+      return isRecordingTarget(sender?.tab?.id);
     case "RECORDED_STEP":
       return recordStep(message.payload.step, sender?.tab?.id);
     case "SAVE_SCENARIO":
