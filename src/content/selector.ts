@@ -62,6 +62,28 @@ function getElementRole(element: HTMLElement): string | undefined {
 }
 
 export function getElementLabel(element: HTMLElement): string | undefined {
+  const labelledBy = getAriaLabelledByText(element);
+  if (labelledBy) {
+    return labelledBy;
+  }
+
+  return getNativeLabelText(element);
+}
+
+function getAriaLabelledByText(element: HTMLElement): string | undefined {
+  const labelledBy = element.getAttribute("aria-labelledby");
+  if (!labelledBy) {
+    return undefined;
+  }
+  const text = labelledBy
+    .split(/\s+/)
+    .map((id) => cleanText(document.getElementById(id)?.innerText))
+    .filter(Boolean)
+    .join(" ");
+  return cleanText(text);
+}
+
+function getNativeLabelText(element: HTMLElement): string | undefined {
   if (element.id) {
     const label = document.querySelector<HTMLLabelElement>(
       `label[for="${CSS.escape(element.id)}"]`
@@ -78,21 +100,14 @@ export function getElementLabel(element: HTMLElement): string | undefined {
     return wrappingText;
   }
 
-  const labelledBy = element.getAttribute("aria-labelledby");
-  if (labelledBy) {
-    const text = labelledBy
-      .split(/\s+/)
-      .map((id) => cleanText(document.getElementById(id)?.innerText))
-      .filter(Boolean)
-      .join(" ");
-    return cleanText(text);
-  }
-
   return undefined;
 }
 
 function getAccessibleName(element: HTMLElement): string | undefined {
-  const stableName = cleanText(element.getAttribute("aria-label")) ?? getElementLabel(element);
+  const stableName =
+    getAriaLabelledByText(element) ??
+    cleanText(element.getAttribute("aria-label")) ??
+    getNativeLabelText(element);
   if (shouldMaskValue(element)) {
     return stableName;
   }

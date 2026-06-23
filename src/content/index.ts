@@ -1,8 +1,8 @@
 import type { ContentMessage } from "../shared/messages";
 import type { ScenarioStep } from "../shared/types";
-import { sanitizeUrl } from "../shared/utils";
 import { flushPendingInputs, installRecorder } from "./recorder";
 import { watchNavigation } from "./navigation";
+import { sanitizeUrl } from "./urlSanitizer";
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));

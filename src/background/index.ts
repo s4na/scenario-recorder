@@ -23,6 +23,7 @@ import {
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
 let stateMutationQueue: Promise<unknown> = Promise.resolve();
+let tabUrlsSaveQueue: Promise<unknown> = Promise.resolve();
 const tabUrls = new Map<number, string>();
 const tabUrlsReady = initializeTabUrls();
 
@@ -195,7 +196,7 @@ async function recordTabNavigation(
   tabId: number,
   toUrl: string,
   title?: string,
-  eventTimestamp = Date.now(),
+  timestamp = Date.now(),
 ): Promise<void> {
   await tabUrlsReady;
   const sanitizedToUrl = sanitizeUrl(toUrl);
@@ -207,7 +208,7 @@ async function recordTabNavigation(
   const state = await getRecorderState();
   if (
     state.status !== "recording" ||
-    eventTimestamp < getActiveSessionStartedAt(state)
+    timestamp < getActiveSessionStartedAt(state)
   ) {
     await setTabUrl(tabId, sanitizedToUrl);
     return;
@@ -215,7 +216,7 @@ async function recordTabNavigation(
   await recordStep({
     id: createStepId(),
     type: "navigation",
-    timestamp: eventTimestamp,
+    timestamp,
     url: sanitizedToUrl,
     title,
     fromUrl: sanitizeOptionalUrl(fromUrl),
@@ -236,12 +237,12 @@ function isHttpUrl(url: string): boolean {
 
 async function setTabUrl(tabId: number, url: string): Promise<void> {
   tabUrls.set(tabId, sanitizeUrl(url));
-  await saveTabUrls();
+  await enqueueTabUrlsSave();
 }
 
 async function deleteTabUrl(tabId: number): Promise<void> {
   tabUrls.delete(tabId);
-  await saveTabUrls();
+  await enqueueTabUrlsSave();
 }
 
 async function seedActiveTabUrl(): Promise<void> {
@@ -260,6 +261,12 @@ async function saveTabUrls(): Promise<void> {
   await chrome.storage.session.set({
     [TAB_URLS_STORAGE_KEY]: Object.fromEntries(entries),
   });
+}
+
+function enqueueTabUrlsSave(): Promise<void> {
+  const next = tabUrlsSaveQueue.catch(() => undefined).then(saveTabUrls);
+  tabUrlsSaveQueue = next.catch(() => undefined);
+  return next;
 }
 
 async function loadTabUrls(): Promise<void> {
@@ -449,7 +456,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) {
     return;
   }
-  void recordTabNavigation(details.tabId, details.url, undefined, details.timeStamp);
+  void recordTabNavigation(details.tabId, details.url);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

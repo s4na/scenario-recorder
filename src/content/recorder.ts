@@ -1,7 +1,7 @@
 import type { ScenarioStep } from "../shared/types";
-import { sanitizeUrl } from "../shared/utils";
 import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
+import { sanitizeUrl } from "./urlSanitizer";
 
 type StepHandler = (step: ScenarioStep) => void | Promise<void>;
 type FlushOptions = {
