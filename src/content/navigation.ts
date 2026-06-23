@@ -45,6 +45,9 @@ export function watchNavigation(onNavigation: NavigationHandler): void {
     if (!detail?.fromUrl || !detail.toUrl) {
       return;
     }
+    if (detail.toUrl !== location.href) {
+      return;
+    }
     emitNavigation(detail.fromUrl, detail.toUrl);
   });
 

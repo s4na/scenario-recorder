@@ -2,13 +2,29 @@ import type { SelectorCandidate, TargetSnapshot } from "../shared/types";
 import { shouldMaskValue } from "./masking";
 
 const MAX_TEXT_LENGTH = 120;
+const SECRET_TEXT_PATTERNS = [
+  /sk_(live|test)_[A-Za-z0-9_=-]+/gi,
+  /bearer\s+[A-Za-z0-9._~+/=-]+/gi,
+  /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+  /\b(?:access[_-]?token|api[_-]?key|client[_-]?secret|id[_-]?token|refresh[_-]?token|secret|token|password|otp|credential|authorization|session|signature|ticket|code)[=:]\s*(?:bearer\s+)?[^"'&<>]+/gi
+];
 
 function cleanText(value: string | null | undefined): string | undefined {
-  const text = value?.replace(/\s+/g, " ").trim();
+  const text = redactSecretText(value)?.replace(/\s+/g, " ").trim();
   if (!text) {
     return undefined;
   }
   return text.slice(0, MAX_TEXT_LENGTH);
+}
+
+function redactSecretText(value: string | null | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return SECRET_TEXT_PATTERNS.reduce(
+    (current, pattern) => current.replace(pattern, "{{SECRET}}"),
+    value
+  );
 }
 
 function addCandidate(
@@ -94,13 +110,13 @@ function createCssSelector(element: HTMLElement): string {
   while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
     const tagName = current.tagName.toLowerCase();
     if (current.id) {
-      parts.unshift(`${tagName}#${CSS.escape(current.id)}`);
+      parts.unshift(`${tagName}#${CSS.escape(redactSecretText(current.id) ?? current.id)}`);
       break;
     }
 
     const classNames = Array.from(current.classList)
       .slice(0, 2)
-      .map((className) => `.${CSS.escape(className)}`)
+      .map((className) => `.${CSS.escape(redactSecretText(className) ?? className)}`)
       .join("");
     let selector = `${tagName}${classNames}`;
     const parent = current.parentElement;
@@ -116,7 +132,7 @@ function createCssSelector(element: HTMLElement): string {
     current = current.parentElement;
   }
 
-  return parts.join(" > ");
+  return redactSecretText(parts.join(" > ")) ?? parts.join(" > ");
 }
 
 function createXPath(element: HTMLElement): string {
@@ -162,10 +178,10 @@ export function getSelectorCandidates(element: HTMLElement): SelectorCandidate[]
   addCandidate(
     candidates,
     element.getAttribute("name")
-      ? { type: "name", value: element.getAttribute("name") ?? "", confidence: 0.8 }
+      ? { type: "name", value: cleanText(element.getAttribute("name")) ?? "", confidence: 0.8 }
       : undefined
   );
-  addCandidate(candidates, element.id ? { type: "id", value: element.id, confidence: 0.75 } : undefined);
+  addCandidate(candidates, element.id ? { type: "id", value: cleanText(element.id) ?? "", confidence: 0.75 } : undefined);
   addCandidate(
     candidates,
     placeholder ? { type: "placeholder", value: placeholder, confidence: 0.7 } : undefined
@@ -183,7 +199,7 @@ function attributeCandidate(
   confidence: number
 ): SelectorCandidate | undefined {
   const value = element.getAttribute(attribute);
-  return value ? { type: attribute, value, confidence } : undefined;
+  return value ? { type: attribute, value: cleanText(value) ?? "", confidence } : undefined;
 }
 
 export function createTargetSnapshot(element: HTMLElement): TargetSnapshot {
@@ -195,10 +211,10 @@ export function createTargetSnapshot(element: HTMLElement): TargetSnapshot {
     text,
     ariaLabel: cleanText(element.getAttribute("aria-label")),
     role: getElementRole(element),
-    name: element.getAttribute("name") ?? undefined,
-    id: element.id || undefined,
-    className: element.className || undefined,
-    dataTestId: element.getAttribute("data-testid") ?? undefined,
+    name: cleanText(element.getAttribute("name")),
+    id: cleanText(element.id) || undefined,
+    className: cleanText(element.className) || undefined,
+    dataTestId: cleanText(element.getAttribute("data-testid")),
     label: getElementLabel(element),
     placeholder: cleanText(element.getAttribute("placeholder")),
     inputType: element instanceof HTMLInputElement ? element.type : undefined,

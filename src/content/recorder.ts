@@ -25,6 +25,8 @@ async function isRecording(): Promise<boolean> {
 function sanitizeUrl(rawUrl: string): string {
   try {
     const url = new URL(rawUrl);
+    url.username = "";
+    url.password = "";
     for (const key of Array.from(url.searchParams.keys())) {
       if (isSecretUrlKey(key)) {
         url.searchParams.set(key, "{{SECRET}}");
@@ -175,11 +177,15 @@ function isFillInput(element: HTMLElement): element is HTMLInputElement | HTMLTe
   return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
 }
 
+function isFileInput(element: HTMLElement): element is HTMLInputElement {
+  return element instanceof HTMLInputElement && element.type === "file";
+}
+
 function getComposedElement(event: Event): HTMLElement | undefined {
   return event.composedPath().find((item): item is HTMLElement => item instanceof HTMLElement);
 }
 
-function recordClick(event: MouseEvent, onStep: StepHandler): void {
+async function recordClick(event: MouseEvent, onStep: StepHandler): Promise<void> {
   const targetElement = getComposedElement(event);
   if (!targetElement) {
     return;
@@ -189,7 +195,7 @@ function recordClick(event: MouseEvent, onStep: StepHandler): void {
     targetElement.closest<HTMLElement>(
       "button,a,input,textarea,select,[role],label,[data-testid],[data-test],[data-cy]"
     ) ?? targetElement;
-  if (isDisabledElement(target)) {
+  if (isDisabledElement(target) || !(await isRecording())) {
     return;
   }
 
@@ -249,7 +255,7 @@ export function installRecorder(onStep: StepHandler): void {
   document.addEventListener(
     "click",
     (event) => {
-      recordClick(event, onStep);
+      void recordClick(event, onStep);
     },
     true
   );
@@ -258,7 +264,7 @@ export function installRecorder(onStep: StepHandler): void {
     "input",
     (event) => {
       const target = getComposedElement(event);
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && !isFileInput(target)) {
         scheduleFill(target, onStep);
       }
     },
@@ -271,7 +277,7 @@ export function installRecorder(onStep: StepHandler): void {
       const target = getComposedElement(event);
       if (target instanceof HTMLSelectElement) {
         void recordSelect(target, onStep);
-      } else if (target instanceof HTMLElement && isFillInput(target)) {
+      } else if (target instanceof HTMLElement && isFillInput(target) && !isFileInput(target)) {
         scheduleFill(target, onStep);
       }
     },

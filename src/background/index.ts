@@ -156,6 +156,12 @@ function getBaseUrl(url: string | undefined): string | undefined {
 async function saveCurrentScenario(name: string): Promise<{ scenario: Scenario; state: RecorderState }> {
   return enqueueStateMutation(async () => {
     const state = await getRecorderState();
+    if (state.status !== "idle") {
+      throw new Error("Recording must be stopped before saving a scenario.");
+    }
+    if (state.currentSteps.length === 0) {
+      throw new Error("Cannot save a scenario without recorded steps.");
+    }
     const scenario = createScenario(name, state);
     await saveScenario(scenario);
     await clearRecorderState();

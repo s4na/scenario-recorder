@@ -110,6 +110,8 @@ export function shouldReplaceFillStep(previous: ScenarioStep, next: ScenarioStep
 export function sanitizeUrl(rawUrl: string): string {
   try {
     const url = new URL(rawUrl);
+    url.username = "";
+    url.password = "";
     for (const key of Array.from(url.searchParams.keys())) {
       if (isSecretUrlKey(key)) {
         url.searchParams.set(key, "{{SECRET}}");
