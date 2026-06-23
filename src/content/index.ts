@@ -167,8 +167,9 @@ function safeDecode(value: string): string {
 }
 
 async function sendStep(step: ScenarioStep): Promise<void> {
-  sendQueue = sendQueue.then(() => sendStepNow(step));
-  return sendQueue;
+  const next = sendQueue.catch(() => undefined).then(() => sendStepNow(step));
+  sendQueue = next.catch(() => undefined);
+  return next;
 }
 
 let sendQueue: Promise<void> = Promise.resolve();
@@ -193,8 +194,18 @@ async function recordNavigationStep(fromUrl: string, toUrl: string): Promise<voi
     fromUrl: sanitizeUrl(fromUrl),
     toUrl: sanitizeUrl(toUrl),
   };
-  await flushPendingInputs(sendStep, { throwOnError: true });
-  await sendStep(step);
+  try {
+    await flushPendingInputs(sendStep, { throwOnError: true });
+    await sendStep(step);
+  } catch (error) {
+    await delay(300);
+    await flushPendingInputs(sendStep, { throwOnError: true });
+    await sendStep(step);
+  }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 installRecorder(sendStep);
