@@ -1,0 +1,224 @@
+import type { RuntimeMessage } from "../shared/messages";
+import {
+  clearRecorderState,
+  deleteScenario,
+  getRecorderState,
+  getScenarios,
+  saveScenario,
+  setRecorderState
+} from "../shared/storage";
+import type { RecorderState, Scenario, ScenarioExport, ScenarioStep } from "../shared/types";
+import { createId, sanitizeUrl, shouldReplaceFillStep, toIsoNow } from "../shared/utils";
+
+const EXTENSION_VERSION = chrome.runtime.getManifest().version;
+let stateMutationQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueStateMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const next = stateMutationQueue.catch(() => undefined).then(mutation);
+  stateMutationQueue = next.catch(() => undefined);
+  return next;
+}
+
+function withUpdatedStep(state: RecorderState, step: ScenarioStep): RecorderState {
+  const currentSteps = [...state.currentSteps];
+  const lastStep = currentSteps[currentSteps.length - 1];
+
+  if (lastStep && shouldReplaceFillStep(lastStep, step)) {
+    currentSteps[currentSteps.length - 1] = step;
+  } else {
+    currentSteps.push(step);
+  }
+
+  return { ...state, currentSteps };
+}
+
+async function startRecording(): Promise<RecorderState> {
+  return enqueueStateMutation(async () => {
+    const now = toIsoNow();
+    const state: RecorderState = {
+      status: "recording",
+      currentSteps: [],
+      recordingSessions: [{ startedAt: now }],
+      startedAt: now
+    };
+    await setRecorderState(state);
+    return state;
+  });
+}
+
+async function pauseRecording(): Promise<RecorderState> {
+  return enqueueStateMutation(async () => {
+    const now = toIsoNow();
+    const state = await getRecorderState();
+    const sessions = [...state.recordingSessions];
+    const lastSession = sessions[sessions.length - 1] ?? {};
+    sessions[sessions.length - 1] = { ...lastSession, pausedAt: now };
+    const nextState = { ...state, status: "paused" as const, pausedAt: now, recordingSessions: sessions };
+    await setRecorderState(nextState);
+    return nextState;
+  });
+}
+
+async function resumeRecording(): Promise<RecorderState> {
+  return enqueueStateMutation(async () => {
+    const now = toIsoNow();
+    const state = await getRecorderState();
+    const nextState = {
+      ...state,
+      status: "recording" as const,
+      resumedAt: now,
+      recordingSessions: [...state.recordingSessions, { resumedAt: now }]
+    };
+    await setRecorderState(nextState);
+    return nextState;
+  });
+}
+
+async function stopRecording(): Promise<RecorderState> {
+  return enqueueStateMutation(async () => {
+    const now = toIsoNow();
+    const state = await getRecorderState();
+    const sessions = [...state.recordingSessions];
+    const lastSession = sessions[sessions.length - 1] ?? {};
+    sessions[sessions.length - 1] = { ...lastSession, stoppedAt: now };
+    const nextState = { ...state, status: "idle" as const, stoppedAt: now, recordingSessions: sessions };
+    await setRecorderState(nextState);
+    return nextState;
+  });
+}
+
+async function recordStep(step: ScenarioStep): Promise<RecorderState> {
+  return enqueueStateMutation(async () => {
+    const state = await getRecorderState();
+    if (state.status !== "recording") {
+      return state;
+    }
+    const nextState = withUpdatedStep(state, sanitizeStepUrls(step));
+    await setRecorderState(nextState);
+    return nextState;
+  });
+}
+
+function createScenario(name: string, state: RecorderState): Scenario {
+  const now = toIsoNow();
+  const firstStep = state.currentSteps[0];
+  const startUrl = sanitizeOptionalUrl(firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url);
+  const baseUrl = getBaseUrl(startUrl);
+
+  return {
+    schemaVersion: "scenario-recorder/v1",
+    id: createId("scenario"),
+    name,
+    description: "",
+    tags: [],
+    createdAt: now,
+    updatedAt: now,
+    startUrl,
+    baseUrl,
+    variables: {},
+    recording: {
+      sessions: state.recordingSessions
+    },
+    steps: state.currentSteps,
+    assertions: [],
+    metadata: {
+      userAgent: navigator.userAgent,
+      extensionVersion: EXTENSION_VERSION,
+      recordedBy: "scenario-recorder"
+    }
+  };
+}
+
+function getBaseUrl(url: string | undefined): string | undefined {
+  if (!url || url.startsWith("about:")) {
+    return undefined;
+  }
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+async function saveCurrentScenario(name: string): Promise<{ scenario: Scenario; state: RecorderState }> {
+  return enqueueStateMutation(async () => {
+    const state = await getRecorderState();
+    const scenario = createScenario(name, state);
+    await saveScenario(scenario);
+    await clearRecorderState();
+    return { scenario, state: await getRecorderState() };
+  });
+}
+
+async function clearCurrentRecording(): Promise<RecorderState> {
+  return enqueueStateMutation(async () => {
+    await clearRecorderState();
+    return getRecorderState();
+  });
+}
+
+async function getCurrentRecorderState(): Promise<RecorderState> {
+  return enqueueStateMutation(() => getRecorderState());
+}
+
+function sanitizeStepUrls(step: ScenarioStep): ScenarioStep {
+  return {
+    ...step,
+    url: sanitizeUrl(step.url),
+    fromUrl: sanitizeOptionalUrl(step.fromUrl),
+    toUrl: sanitizeOptionalUrl(step.toUrl)
+  };
+}
+
+function sanitizeOptionalUrl(url: string | undefined): string | undefined {
+  return url ? sanitizeUrl(url) : undefined;
+}
+
+async function handleMessage(message: RuntimeMessage): Promise<unknown> {
+  switch (message.type) {
+    case "START_RECORDING":
+      return startRecording();
+    case "PAUSE_RECORDING":
+      return pauseRecording();
+    case "RESUME_RECORDING":
+      return resumeRecording();
+    case "STOP_RECORDING":
+      return stopRecording();
+    case "CLEAR_RECORDING":
+      return clearCurrentRecording();
+    case "GET_RECORDER_STATE":
+      return getCurrentRecorderState();
+    case "RECORDED_STEP":
+      return recordStep(message.payload.step);
+    case "SAVE_SCENARIO":
+      return saveCurrentScenario(message.payload.name);
+    case "DELETE_SCENARIO":
+      await deleteScenario(message.payload.scenarioId);
+      return { scenarios: await getScenarios() };
+    case "GET_SCENARIOS":
+      return { scenarios: await getScenarios() };
+    case "EXPORT_SCENARIO": {
+      const scenarios = await getScenarios();
+      return { scenario: scenarios.find((scenario) => scenario.id === message.payload.scenarioId) };
+    }
+    case "EXPORT_ALL_SCENARIOS": {
+      const exportPayload: ScenarioExport = {
+        schemaVersion: "scenario-recorder/export/v1",
+        exportedAt: toIsoNow(),
+        scenarios: await getScenarios()
+      };
+      return exportPayload;
+    }
+    default:
+      throw new Error("Unsupported message");
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+  void handleMessage(message)
+    .then(sendResponse)
+    .catch((error: unknown) => {
+      sendResponse({ error: error instanceof Error ? error.message : String(error) });
+    });
+  return true;
+});
