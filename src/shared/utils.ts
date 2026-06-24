@@ -84,6 +84,14 @@ export function downloadJson(filename: string, payload: unknown): void {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json;charset=utf-8"
   });
+  downloadBlob(filename, blob);
+}
+
+export function downloadText(filename: string, text: string, type = "text/plain;charset=utf-8"): void {
+  downloadBlob(filename, new Blob([text], { type }));
+}
+
+function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

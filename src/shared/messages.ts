@@ -1,4 +1,4 @@
-import type { RecorderState, Scenario, ScenarioExport, ScenarioStep } from "./types";
+import type { RecorderState, Scenario, ScenarioExport, ScenarioRecorderSettings, ScenarioStep } from "./types";
 
 export type MessageMap = {
   START_RECORDING: {
@@ -37,6 +37,18 @@ export type MessageMap = {
     payload: { name: string };
     response: { scenario: Scenario; state: RecorderState };
   };
+  UPDATE_SCENARIO: {
+    payload: { scenario: Scenario };
+    response: { scenarios: Scenario[] };
+  };
+  IMPORT_SCENARIOS: {
+    payload: { scenarios: Scenario[] };
+    response: { scenarios: Scenario[] };
+  };
+  ADD_ASSERTION_STEP: {
+    payload: { kind: "url" | "title" };
+    response: RecorderState;
+  };
   DELETE_SCENARIO: {
     payload: { scenarioId: string };
     response: { scenarios: Scenario[] };
@@ -52,6 +64,14 @@ export type MessageMap = {
   EXPORT_ALL_SCENARIOS: {
     payload: undefined;
     response: ScenarioExport;
+  };
+  GET_SETTINGS: {
+    payload: undefined;
+    response: ScenarioRecorderSettings;
+  };
+  UPDATE_SETTINGS: {
+    payload: ScenarioRecorderSettings;
+    response: ScenarioRecorderSettings;
   };
 };
 

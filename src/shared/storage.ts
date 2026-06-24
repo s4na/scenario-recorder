@@ -1,14 +1,19 @@
-import type { RecorderState, Scenario } from "./types";
+import type { RecorderState, Scenario, ScenarioRecorderSettings } from "./types";
 
 export const STORAGE_KEYS = {
   RECORDER_STATE: "scenarioRecorder.recorderState",
-  SCENARIOS: "scenarioRecorder.scenarios"
+  SCENARIOS: "scenarioRecorder.scenarios",
+  SETTINGS: "scenarioRecorder.settings"
 } as const;
 
 const DEFAULT_RECORDER_STATE: RecorderState = {
   status: "idle",
   currentSteps: [],
   recordingSessions: []
+};
+
+const DEFAULT_SETTINGS: ScenarioRecorderSettings = {
+  allowedOrigins: []
 };
 
 function getChromeStorage(): chrome.storage.StorageArea {
@@ -56,4 +61,25 @@ export async function deleteScenario(scenarioId: string): Promise<void> {
 export async function getScenario(scenarioId: string): Promise<Scenario | undefined> {
   const scenarios = await getScenarios();
   return scenarios.find((scenario) => scenario.id === scenarioId);
+}
+
+export async function importScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
+  const current = await getScenarios();
+  const importedById = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
+  const imported = Array.from(importedById.values());
+  const next = [...imported, ...current.filter((scenario) => !importedById.has(scenario.id))];
+  await getChromeStorage().set({ [STORAGE_KEYS.SCENARIOS]: next });
+  return next;
+}
+
+export async function getSettings(): Promise<ScenarioRecorderSettings> {
+  const result = await getChromeStorage().get(STORAGE_KEYS.SETTINGS);
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(result[STORAGE_KEYS.SETTINGS] as ScenarioRecorderSettings | undefined)
+  };
+}
+
+export async function setSettings(settings: ScenarioRecorderSettings): Promise<void> {
+  await getChromeStorage().set({ [STORAGE_KEYS.SETTINGS]: settings });
 }

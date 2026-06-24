@@ -4,13 +4,17 @@ import {
   deleteScenario,
   getRecorderState,
   getScenarios,
+  getSettings,
+  importScenarios,
   saveScenario,
   setRecorderState,
+  setSettings,
 } from "../shared/storage";
 import type {
   RecorderState,
   Scenario,
   ScenarioExport,
+  ScenarioRecorderSettings,
   ScenarioStep,
 } from "../shared/types";
 import {
@@ -20,6 +24,7 @@ import {
   shouldReplaceFillStep,
   toIsoNow,
 } from "../shared/utils";
+import { withDerivedSecretVariables } from "../shared/scenarioArtifacts";
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
@@ -82,6 +87,7 @@ function isDuplicateNavigationStep(
 async function startRecording(): Promise<RecorderState> {
   return enqueueStateMutation(async () => {
     const currentState = await getRecorderState();
+    const settings = await getSettings();
     if (currentState.status !== "idle") {
       return currentState;
     }
@@ -91,6 +97,9 @@ async function startRecording(): Promise<RecorderState> {
       );
     }
     const activeTab = await seedActiveTabUrl();
+    if (!isAllowedBySettings(activeTab?.url, settings)) {
+      throw new Error("The active tab is outside the configured target domains.");
+    }
     const recorderReady = await injectRecorderIntoTab(activeTab);
     if (!recorderReady) {
       throw new Error("Open an HTTP or HTTPS page before starting recording.");
@@ -178,9 +187,11 @@ async function recordStep(
   await tabUrlsReady;
   return enqueueStateMutation(async () => {
     const state = await getRecorderState();
+    const settings = await getSettings();
     if (
       state.status !== "recording" ||
-      (senderTabId !== undefined && state.targetTabId !== senderTabId)
+      (senderTabId !== undefined && state.targetTabId !== senderTabId) ||
+      !isAllowedBySettings(step.type === "navigation" ? step.toUrl ?? step.url : step.url, settings)
     ) {
       return state;
     }
@@ -224,10 +235,12 @@ async function recordTabNavigation(
     return;
   }
   const state = await getRecorderState();
+  const settings = await getSettings();
   if (
     state.status !== "recording" ||
     state.targetTabId !== tabId ||
-    timestamp < getActiveSessionStartedAtMs(state)
+    timestamp < getActiveSessionStartedAtMs(state) ||
+    !isAllowedBySettings(sanitizedToUrl, settings)
   ) {
     await setTabUrl(tabId, sanitizedToUrl);
     return;
@@ -249,6 +262,20 @@ function getActiveSessionStartedAtMs(state: RecorderState): number {
 
 function isHttpUrl(url: string): boolean {
   return url.startsWith("http://") || url.startsWith("https://");
+}
+
+function isAllowedBySettings(url: string | undefined, settings: ScenarioRecorderSettings): boolean {
+  if (settings.allowedOrigins.length === 0) {
+    return true;
+  }
+  if (!url) {
+    return false;
+  }
+  try {
+    return settings.allowedOrigins.includes(new URL(url).origin);
+  } catch {
+    return false;
+  }
 }
 
 async function setTabUrl(tabId: number, url: string): Promise<void> {
@@ -386,10 +413,66 @@ async function saveCurrentScenario(
     if (state.currentSteps.length === 0) {
       throw new Error("Cannot save a scenario without recorded steps.");
     }
-    const scenario = createScenario(name, state);
+    const scenario = withDerivedSecretVariables(createScenario(name, state));
     await saveScenario(scenario);
     await clearRecorderState();
     return { scenario, state: await getRecorderState() };
+  });
+}
+
+async function updateStoredScenario(
+  scenario: Scenario,
+): Promise<{ scenarios: Scenario[] }> {
+  return enqueueStateMutation(async () => {
+    await saveScenario({
+      ...withDerivedSecretVariables(scenario),
+      updatedAt: toIsoNow(),
+    });
+    return { scenarios: await getScenarios() };
+  });
+}
+
+async function importStoredScenarios(
+  scenarios: Scenario[],
+): Promise<{ scenarios: Scenario[] }> {
+  return enqueueStateMutation(async () => ({
+    scenarios: await importScenarios(
+      scenarios.map((scenario) => ({
+        ...withDerivedSecretVariables(scenario),
+        updatedAt: toIsoNow(),
+      })),
+    ),
+  }));
+}
+
+async function addAssertionStep(kind: "url" | "title"): Promise<RecorderState> {
+  await tabUrlsReady;
+  return enqueueStateMutation(async () => {
+    const state = await getRecorderState();
+    if (state.status === "idle") {
+      throw new Error("Recording must be active or paused before adding an assertion.");
+    }
+    const tabId = state.targetTabId;
+    if (tabId === undefined) {
+      throw new Error("No target tab is associated with the current recording.");
+    }
+    const tab = await chrome.tabs.get(tabId);
+    const rawUrl = tab.url ?? tabUrls.get(tabId) ?? "about:blank";
+    const url = sanitizeUrl(rawUrl);
+    if (!isAllowedBySettings(url, await getSettings())) {
+      throw new Error("The target tab is outside the configured target domains.");
+    }
+    const expected = kind === "url" ? url : tab.title ?? "";
+    const nextState = withUpdatedStep(state, {
+      id: createStepId(),
+      type: "assert",
+      timestamp: Date.now(),
+      url,
+      title: tab.title,
+      assertion: { kind, expected },
+    });
+    await setRecorderState(nextState);
+    return nextState;
   });
 }
 
@@ -438,6 +521,36 @@ async function exportStoredScenarios(): Promise<ScenarioExport> {
   }));
 }
 
+async function getStoredSettings(): Promise<ScenarioRecorderSettings> {
+  return getSettings();
+}
+
+async function updateStoredSettings(
+  settings: ScenarioRecorderSettings,
+): Promise<ScenarioRecorderSettings> {
+  const normalized = {
+    allowedOrigins: Array.from(new Set(settings.allowedOrigins.map(normalizeOrigin).filter(Boolean))),
+  };
+  await setSettings(normalized);
+  return normalized;
+}
+
+function normalizeOrigin(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    try {
+      return new URL(`https://${trimmed}`).origin;
+    } catch {
+      return "";
+    }
+  }
+}
+
 async function isRecordingTarget(tabId: number | undefined): Promise<{ recording: boolean }> {
   if (tabId === undefined) {
     return { recording: false };
@@ -484,6 +597,12 @@ async function handleMessage(
       return recordStep(message.payload.step, sender?.tab?.id);
     case "SAVE_SCENARIO":
       return saveCurrentScenario(message.payload.name);
+    case "UPDATE_SCENARIO":
+      return updateStoredScenario(message.payload.scenario);
+    case "IMPORT_SCENARIOS":
+      return importStoredScenarios(message.payload.scenarios);
+    case "ADD_ASSERTION_STEP":
+      return addAssertionStep(message.payload.kind);
     case "DELETE_SCENARIO":
       return deleteStoredScenario(message.payload.scenarioId);
     case "GET_SCENARIOS":
@@ -492,6 +611,10 @@ async function handleMessage(
       return getStoredScenario(message.payload.scenarioId);
     case "EXPORT_ALL_SCENARIOS":
       return exportStoredScenarios();
+    case "GET_SETTINGS":
+      return getStoredSettings();
+    case "UPDATE_SETTINGS":
+      return updateStoredSettings(message.payload);
     default:
       throw new Error("Unsupported message");
   }

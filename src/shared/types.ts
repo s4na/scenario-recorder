@@ -61,6 +61,10 @@ export type ScenarioStep = {
   value?: string | string[];
   fromUrl?: string;
   toUrl?: string;
+  assertion?: {
+    kind: "url" | "title";
+    expected: string;
+  };
 };
 
 export type RecordingSession = {
@@ -103,6 +107,10 @@ export type ScenarioExport = {
   schemaVersion: "scenario-recorder/export/v1";
   exportedAt: string;
   scenarios: Scenario[];
+};
+
+export type ScenarioRecorderSettings = {
+  allowedOrigins: string[];
 };
 
 export type RecorderState = {
