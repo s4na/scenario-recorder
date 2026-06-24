@@ -5,7 +5,6 @@ import { createTargetSnapshot } from "./selector";
 import { sanitizeUrl } from "./urlSanitizer";
 
 type RecorderStepType = Exclude<ScenarioStep["type"], "assert">;
-type RecorderStep = Extract<ScenarioStep, { type: RecorderStepType }>;
 type StepHandler = (step: ScenarioStep) => void | Promise<void>;
 type FlushOptions = {
   throwOnError?: boolean;
@@ -116,10 +115,15 @@ function createStepContext(): StepContext {
   };
 }
 
-function createBaseStep(
-  type: RecorderStepType,
+function createBaseStep<T extends RecorderStepType>(
+  type: T,
   context = createStepContext(),
-): Omit<RecorderStep, "id"> {
+): {
+  type: T;
+  timestamp: number;
+  url: string;
+  title: string;
+} {
   return {
     type,
     timestamp: Date.now(),
@@ -379,7 +383,7 @@ function scheduleFill(
   element: HTMLInputElement | HTMLTextAreaElement,
   onStep: StepHandler,
 ): void {
-  const value = maskValue(element, getInputValue(element));
+  const value = maskValue(element, getInputValue(element)) as string;
   const oldPending = pendingInputs.get(element);
   if (oldPending) {
     window.clearTimeout(oldPending.timer);
@@ -395,7 +399,10 @@ function scheduleFill(
   latestInputSequences.set(element, sequence);
   const step: ScenarioStep = {
     id: createStepId(),
-    ...createBaseStep("fill", context),
+    type: "fill",
+    timestamp: Date.now(),
+    url: context.url,
+    title: context.title,
     target: createTargetSnapshot(element, { includeContext: shouldRecordTargetContext() }),
     value,
   };

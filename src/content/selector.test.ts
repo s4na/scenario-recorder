@@ -82,8 +82,13 @@ describe("createTargetSnapshot", () => {
         aria-label="Customer yamada@example.com"
         data-testid="customer-123456789012345678901234"
       >
-        <label for="customer-code">Code 123456</label>
-        <input id="customer-code">
+        <label for="customer-yamada@example.com">Code 123456</label>
+        <input
+          id="customer-yamada@example.com"
+          aria-label="Token abcdefghijklmnopqrstuvwxyz123456"
+          data-testid="input-yamada@example.com"
+          class="field 080-9876-5432"
+        >
       </section>
     `;
 
@@ -98,6 +103,8 @@ describe("createTargetSnapshot", () => {
     expect(serializedContext).toContain("{{SECRET}}");
     expect(serializedContext).not.toContain("yamada@example.com");
     expect(serializedContext).not.toContain("090-1234-5678");
+    expect(serializedContext).not.toContain("080-9876-5432");
+    expect(serializedContext).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
     expect(serializedContext).not.toContain("123456789012345678901234");
   });
 });

@@ -285,6 +285,7 @@ type ScenarioJsonlLine =
       startUrl?: string;
       baseUrl?: string;
       variables?: Scenario["variables"];
+      assertions?: Scenario["assertions"];
       metadata: Scenario["metadata"];
     }
   | ({ kind: "session"; index: number } & RecordingSession)
@@ -306,6 +307,7 @@ function scenarioToJsonlLines(scenario: Scenario): ScenarioJsonlLine[] {
       startUrl: scenario.startUrl,
       baseUrl: scenario.baseUrl,
       variables: scenario.variables,
+      assertions: scenario.assertions,
       metadata: scenario.metadata,
     },
     ...scenario.recording.sessions.map((session, index) => ({
@@ -459,7 +461,7 @@ function parseScenarioJsonl(text: string): Scenario {
     variables: meta.variables,
     recording: { sessions },
     steps,
-    assertions: [],
+    assertions: meta.assertions,
     metadata: meta.metadata,
   });
 }
@@ -739,6 +741,7 @@ function isScenarioJsonlMeta(value: unknown): value is Extract<ScenarioJsonlLine
     isOptionalString(value.baseUrl) &&
     isOptionalStringArray(value.tags) &&
     isOptionalVariables(value.variables) &&
+    isOptionalArray(value.assertions) &&
     isMetadata(value.metadata)
   );
 }

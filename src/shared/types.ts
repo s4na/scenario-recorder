@@ -77,8 +77,18 @@ type ScenarioStepBase = {
 
 export type ScenarioStep =
   | (ScenarioStepBase & {
-      type: Exclude<ScenarioStepType, "assert">;
-      value?: string | string[];
+      type: "fill";
+      value: string;
+      assertion?: never;
+    })
+  | (ScenarioStepBase & {
+      type: "select";
+      value: string | string[];
+      assertion?: never;
+    })
+  | (ScenarioStepBase & {
+      type: Exclude<ScenarioStepType, "assert" | "fill" | "select">;
+      value?: never;
       assertion?: never;
     })
   | (ScenarioStepBase & {

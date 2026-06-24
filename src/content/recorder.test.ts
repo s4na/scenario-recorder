@@ -11,7 +11,7 @@ describe("installRecorder", () => {
   });
 
   it("records target context when the active recording uses context detail", async () => {
-    const { listeners, steps } = await installRecorderForContextTest();
+    const { listeners, steps } = await installRecorderForContextTest("context");
     document.body.innerHTML = `
       <section aria-label="Billing actions">
         <button type="button">Save</button>
@@ -40,7 +40,7 @@ describe("installRecorder", () => {
   });
 
   it("records target context for fill, select, and submit steps", async () => {
-    const { listeners, steps } = await installRecorderForContextTest();
+    const { listeners, steps } = await installRecorderForContextTest("context");
     vi.spyOn(HTMLFormElement.prototype, "requestSubmit").mockImplementation(() => undefined);
     document.body.innerHTML = `
       <section aria-label="Profile form">
@@ -88,9 +88,27 @@ describe("installRecorder", () => {
       ]),
     );
   });
+
+  it("omits target context when the active recording uses minimal detail", async () => {
+    const { listeners, steps } = await installRecorderForContextTest("minimal");
+    document.body.innerHTML = `
+      <section aria-label="Billing actions">
+        <button type="button">Save</button>
+      </section>
+    `;
+    const button = document.querySelector("button");
+
+    dispatchTrustedListener(listeners, "click", button);
+    await Promise.resolve();
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0].target?.context).toBeUndefined();
+  });
 });
 
-async function installRecorderForContextTest(): Promise<{
+async function installRecorderForContextTest(
+  recordingDetailLevel: "minimal" | "context",
+): Promise<{
   listeners: Map<string, EventListener[]>;
   steps: ScenarioStep[];
 }> {
@@ -106,7 +124,7 @@ async function installRecorderForContextTest(): Promise<{
     runtime: {
       sendMessage: vi.fn(async () => ({
         recording: true,
-        recordingDetailLevel: "context",
+        recordingDetailLevel,
       })),
     },
     storage: {

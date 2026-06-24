@@ -253,8 +253,14 @@ describe("scenario artifacts", () => {
   });
 
   it("imports JSONL scenarios back into scenario objects", () => {
-    expect(parseScenarioImportText(scenarioToJsonl(scenario))).toEqual([{
+    const scenarioWithTopLevelAssertions: Scenario = {
       ...scenario,
+      assertions: [{ kind: "legacy", expected: "kept" }],
+    };
+
+    expect(parseScenarioImportText(scenarioToJsonl(scenarioWithTopLevelAssertions))).toEqual([{
+      ...scenario,
+      assertions: [{ kind: "legacy", expected: "kept" }],
       description: "",
       tags: [],
     }]);
