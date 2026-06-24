@@ -251,8 +251,9 @@ export type PlaywrightGenerationOptions = {
 };
 
 export function scenarioToPlaywright(scenario: Scenario, options: PlaywrightGenerationOptions = {}): string {
-  const context = createPlaywrightContext(scenario);
-  assertAllowedSecretPlayback(scenario, context, options.allowedOrigins ?? []);
+  const allowedOrigins = options.allowedOrigins ?? [];
+  const context = createPlaywrightContext(scenario, allowedOrigins);
+  assertAllowedSecretPlayback(scenario, context, allowedOrigins);
   const lines = [
     "import { test, expect } from '@playwright/test';",
     ""
@@ -265,6 +266,17 @@ export function scenarioToPlaywright(scenario: Scenario, options: PlaywrightGene
       "    throw new Error(`Missing required environment variable: ${name}`);",
       "  }",
       "  return value;",
+      "}",
+      ""
+    );
+  }
+  if (context.maskExpressions.size > 0) {
+    lines.push(
+      `const allowedOrigins = new Set(${JSON.stringify(context.allowedOrigins)});`,
+      "",
+      "async function assertAllowedOrigin(page: import('@playwright/test').Page): Promise<void> {",
+      "  const origin = new URL(page.url()).origin;",
+      "  expect(allowedOrigins.has(origin), `Current origin is outside target domains: ${origin}`).toBe(true);",
       "}",
       ""
     );
@@ -318,12 +330,15 @@ export function parseScenarioImport(value: unknown): Scenario[] {
 }
 
 type PlaywrightContext = {
+  allowedOrigins: string[];
   maskExpressions: Map<string, string>;
+  secretExpressions: Set<string>;
   variableDeclarations: string[];
 };
 
-function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
+function createPlaywrightContext(scenario: Scenario, allowedOrigins: string[]): PlaywrightContext {
   const maskExpressions = new Map<string, string>();
+  const secretExpressions = new Set<string>();
   const variableDeclarations: string[] = [];
   const usedIdentifiers = new Set<string>();
   const usedEnvNames = new Set<string>();
@@ -337,9 +352,10 @@ function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
     const identifier = toUniqueIdentifier(name, usedIdentifiers);
     const envName = toUniqueEnvName(name, usedEnvNames);
     maskExpressions.set(variable.defaultValue, identifier);
+    secretExpressions.add(identifier);
     variableDeclarations.push(`const ${identifier} = getRequiredEnv(${JSON.stringify(envName)});`);
   }
-  return { maskExpressions, variableDeclarations };
+  return { allowedOrigins, maskExpressions, secretExpressions, variableDeclarations };
 }
 
 function assertAllowedSecretPlayback(
@@ -411,10 +427,18 @@ function stepToPlaywright(step: ScenarioStep, previousStep: ScenarioStep | undef
     return [`  await ${selector}.click();`];
   }
   if (step.type === "fill") {
-    return [`  await ${selector}.fill(${valueToPlaywrightExpression(step.value ?? "", context)});`];
+    const expression = valueToPlaywrightExpression(step.value ?? "", context);
+    return [
+      ...originGuardForExpression(expression, context),
+      `  await ${selector}.fill(${expression});`
+    ];
   }
   if (step.type === "select") {
-    return [`  await ${selector}.selectOption(${valueToPlaywrightExpression(step.value ?? "", context)});`];
+    const expression = valueToPlaywrightExpression(step.value ?? "", context);
+    return [
+      ...originGuardForExpression(expression, context),
+      `  await ${selector}.selectOption(${expression});`
+    ];
   }
   if (step.type === "submit") {
     return [`  await ${selector}.evaluate((element) => element instanceof HTMLFormElement ? element.requestSubmit() : element.closest('form')?.requestSubmit());`];
@@ -424,6 +448,12 @@ function stepToPlaywright(step: ScenarioStep, previousStep: ScenarioStep | undef
 
 function isNavigationTrigger(step: ScenarioStep): boolean {
   return step.type === "click" || step.type === "submit";
+}
+
+function originGuardForExpression(expression: string, context: PlaywrightContext): string[] {
+  return [...context.secretExpressions].some((secretExpression) => expression.includes(secretExpression))
+    ? ["  await assertAllowedOrigin(page);"]
+    : [];
 }
 
 function urlAssertionExpression(expected: string): string {

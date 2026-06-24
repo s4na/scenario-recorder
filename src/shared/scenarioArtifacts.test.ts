@@ -240,10 +240,12 @@ describe("scenario artifacts", () => {
     }, { allowedOrigins: ["https://example.com"] });
 
     expect(code).toContain("function getRequiredEnv(name: string): string");
+    expect(code).toContain("async function assertAllowedOrigin(page: import('@playwright/test').Page): Promise<void>");
     expect(code).toContain("  const password = getRequiredEnv(\"PASSWORD\");");
     expect(code).toContain("  const secret = getRequiredEnv(\"SECRET\");");
     expect(code).toContain("  await page.goto(\"https://example.com/login\");");
     expect(code).toContain("  await page.getByRole(\"button\", { name: \"Sign in\" }).click();");
+    expect(code).toContain("  await assertAllowedOrigin(page);\n  await page.getByLabel(\"Password\").fill(password);");
     expect(code).toContain("  await page.getByLabel(\"Password\").fill(password);");
     expect(code).toContain("  await page.locator(\"select[name=\\\"role\\\"]\").selectOption(\"admin\");");
     expect(code).toContain("  await page.locator(\"form#settings\").evaluate");
@@ -254,6 +256,7 @@ describe("scenario artifacts", () => {
     expect(code).toContain("  await page.getByPlaceholder(\"Search\").fill(\"search\");");
     expect(code).toContain("  await page.getByText(\"Details\").click();");
     expect(code).toContain("  await page.getByTestId(\"confirm-button\").click();");
+    expect(code).toContain("  await assertAllowedOrigin(page);\n  await page.locator(\"[name=\\\"secretChoice\\\"]\").selectOption([secret]);");
     expect(code).toContain("  await page.locator(\"[name=\\\"secretChoice\\\"]\").selectOption([secret]);");
     expect(code).toContain("  await page.goto(\"https://example.com/unsupported\");");
     expect(code).toContain("  await page.waitForLoadState(\"networkidle\");");
@@ -262,6 +265,7 @@ describe("scenario artifacts", () => {
     const orderedFragments = [
       "  await page.goto(\"https://example.com/login\");",
       "  await page.getByRole(\"button\", { name: \"Sign in\" }).click();",
+      "  await assertAllowedOrigin(page);",
       "  await page.getByLabel(\"Password\").fill(password);",
       "  await expect(page).toHaveURL(\"https://example.com/dashboard\");",
       "  await page.locator(\"select[name=\\\"role\\\"]\").selectOption(\"admin\");",
