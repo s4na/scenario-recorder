@@ -1,9 +1,10 @@
 import type { RuntimeMessage } from "../shared/messages";
-import type { ScenarioStep } from "../shared/types";
+import type { RecordingDetailLevel, ScenarioStep } from "../shared/types";
 import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
 import { sanitizeUrl } from "./urlSanitizer";
 
+type RecorderStepType = Exclude<ScenarioStep["type"], "assert">;
 type StepHandler = (step: ScenarioStep) => void | Promise<void>;
 type FlushOptions = {
   throwOnError?: boolean;
@@ -37,6 +38,7 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let lastClickTarget: HTMLElement | undefined;
 let cachedRecording = false;
+let cachedRecordingDetailLevel: RecordingDetailLevel = "minimal";
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
 let recordingTargetRefreshSequence = 0;
@@ -58,6 +60,7 @@ async function refreshRecordingTargetCache(): Promise<void> {
     return;
   }
   cachedRecording = Boolean(response?.recording);
+  cachedRecordingDetailLevel = response?.recordingDetailLevel === "context" ? "context" : "minimal";
 }
 
 function markRecordingTargetUnavailable(error: unknown, refreshSequence: number): void {
@@ -73,7 +76,13 @@ function initializeRecordingCache(): void {
     markRecordingTargetUnavailable(error, initialRefresh);
   });
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes["scenarioRecorder.recorderState"]) {
+    if (
+      areaName !== "local" ||
+      (
+        !changes["scenarioRecorder.recorderState"] &&
+        !changes["scenarioRecorder.settings"]
+      )
+    ) {
       return;
     }
     const refreshSequence = recordingTargetRefreshSequence + 1;
@@ -85,6 +94,10 @@ function initializeRecordingCache(): void {
 
 function isRecording(): boolean {
   return cachedRecording;
+}
+
+function shouldRecordTargetContext(): boolean {
+  return cachedRecordingDetailLevel === "context";
 }
 
 function isDisabledElement(element: HTMLElement): boolean {
@@ -102,10 +115,15 @@ function createStepContext(): StepContext {
   };
 }
 
-function createBaseStep(
-  type: ScenarioStep["type"],
+function createBaseStep<T extends RecorderStepType>(
+  type: T,
   context = createStepContext(),
-): Omit<ScenarioStep, "id"> {
+): {
+  type: T;
+  timestamp: number;
+  url: string;
+  title: string;
+} {
   return {
     type,
     timestamp: Date.now(),
@@ -201,7 +219,7 @@ async function recordClick(
   await onStep({
     id: createStepId(),
     ...createBaseStep("click"),
-    target: createTargetSnapshot(target),
+    target: createTargetSnapshot(target, { includeContext: shouldRecordTargetContext() }),
   });
 }
 
@@ -281,7 +299,7 @@ async function recordSubmit(
   await onStep({
     id: createStepId(),
     ...createBaseStep("submit"),
-    target: createTargetSnapshot(form),
+    target: createTargetSnapshot(form, { includeContext: shouldRecordTargetContext() }),
   });
 }
 
@@ -365,7 +383,7 @@ function scheduleFill(
   element: HTMLInputElement | HTMLTextAreaElement,
   onStep: StepHandler,
 ): void {
-  const value = maskValue(element, getInputValue(element));
+  const value = maskValue(element, getInputValue(element)) as string;
   const oldPending = pendingInputs.get(element);
   if (oldPending) {
     window.clearTimeout(oldPending.timer);
@@ -381,8 +399,11 @@ function scheduleFill(
   latestInputSequences.set(element, sequence);
   const step: ScenarioStep = {
     id: createStepId(),
-    ...createBaseStep("fill", context),
-    target: createTargetSnapshot(element),
+    type: "fill",
+    timestamp: Date.now(),
+    url: context.url,
+    title: context.title,
+    target: createTargetSnapshot(element, { includeContext: shouldRecordTargetContext() }),
     value,
   };
 
@@ -419,7 +440,7 @@ function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
     onStep({
       id: createStepId(),
       ...createBaseStep("select"),
-      target: createTargetSnapshot(element),
+      target: createTargetSnapshot(element, { includeContext: shouldRecordTargetContext() }),
       value: maskValue(element, getInputValue(element)),
     }),
   ).catch((error: unknown) => {

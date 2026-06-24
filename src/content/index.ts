@@ -2,6 +2,7 @@ import type { ContentMessage } from "../shared/messages";
 import type { ScenarioStep } from "../shared/types";
 import { flushPendingInputs, installRecorder } from "./recorder";
 import { watchNavigation } from "./navigation";
+import { renderRecordingOverlay } from "./overlay";
 import { sanitizeUrl } from "./urlSanitizer";
 
 function createStepId(): string {
@@ -19,6 +20,17 @@ async function isRecording(): Promise<boolean> {
     | { status?: string }
     | undefined;
   return recorderState?.status === "recording";
+}
+
+async function refreshRecordingOverlay(): Promise<void> {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "GET_RECORDING_OVERLAY_STATE",
+    });
+    renderRecordingOverlay(response);
+  } catch {
+    renderRecordingOverlay({ visible: false });
+  }
 }
 
 async function sendStep(step: ScenarioStep): Promise<void> {
@@ -47,6 +59,7 @@ async function sendStepNow(step: ScenarioStep): Promise<void> {
   if (response && typeof response === "object" && "error" in response) {
     throw new Error(String(response.error));
   }
+  await refreshRecordingOverlay();
 }
 
 async function recordNavigationStep(fromUrl: string, toUrl: string): Promise<void> {
@@ -74,6 +87,20 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 installRecorder(sendStep);
+void refreshRecordingOverlay();
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (
+    areaName !== "local" ||
+    (
+      !changes["scenarioRecorder.recorderState"] &&
+      !changes["scenarioRecorder.settings"]
+    )
+  ) {
+    return;
+  }
+  void refreshRecordingOverlay();
+});
 
 chrome.runtime.onMessage.addListener(
   (message: ContentMessage, _sender, sendResponse) => {

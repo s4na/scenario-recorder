@@ -49,19 +49,56 @@ export type TargetSnapshot = {
     width: number;
     height: number;
   };
+  context?: TargetContext[];
 };
 
-export type ScenarioStep = {
+export type TargetContext = {
+  tagName: string;
+  role?: string;
+  text?: string;
+  ariaLabel?: string;
+  id?: string;
+  className?: string;
+  dataTestId?: string;
+  label?: string;
+  relation: "self" | "ancestor";
+  depth: number;
+};
+
+type ScenarioStepBase = {
   id: string;
-  type: ScenarioStepType;
   timestamp: number;
   url: string;
   title?: string;
   target?: TargetSnapshot;
-  value?: string | string[];
   fromUrl?: string;
   toUrl?: string;
 };
+
+export type ScenarioStep =
+  | (ScenarioStepBase & {
+      type: "fill";
+      value: string;
+      assertion?: never;
+    })
+  | (ScenarioStepBase & {
+      type: "select";
+      value: string | string[];
+      assertion?: never;
+    })
+  | (ScenarioStepBase & {
+      type: Exclude<ScenarioStepType, "assert" | "fill" | "select">;
+      value?: never;
+      assertion?: never;
+    })
+  | (ScenarioStepBase & {
+      type: "assert";
+      value?: never;
+      assertion: {
+        kind: "url" | "title";
+        expected: string;
+      };
+    });
 
 export type RecordingSession = {
   startedAt?: string;
@@ -105,6 +142,13 @@ export type ScenarioExport = {
   scenarios: Scenario[];
 };
 
+export type ScenarioRecorderSettings = {
+  allowedOrigins: string[];
+  recordingDetailLevel: RecordingDetailLevel;
+};
+
+export type RecordingDetailLevel = "minimal" | "context";
+
 export type RecorderState = {
   status: RecordingStatus;
   currentSteps: ScenarioStep[];
@@ -116,4 +160,12 @@ export type RecorderState = {
   targetTabId?: number;
   targetWindowId?: number;
   startedAtMs?: number;
+};
+
+export type RecordingOverlayState = {
+  visible: true;
+  status: Extract<RecordingStatus, "recording" | "paused">;
+  stepCount: number;
+  lastStepType?: ScenarioStepType;
+  currentUrl?: string;
 };
