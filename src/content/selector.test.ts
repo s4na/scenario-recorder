@@ -54,7 +54,7 @@ describe("createTargetSnapshot", () => {
         expect.objectContaining({
           relation: "ancestor",
           tagName: "tr",
-          text: expect.stringContaining("yamada@example.com"),
+          text: expect.stringContaining("{{EMAIL}}"),
         }),
         expect.objectContaining({
           relation: "ancestor",
@@ -64,5 +64,6 @@ describe("createTargetSnapshot", () => {
         }),
       ]),
     );
+    expect(snapshot.context?.map((item) => item.text).join(" ")).not.toContain("yamada@example.com");
   });
 });

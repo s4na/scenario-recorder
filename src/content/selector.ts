@@ -10,6 +10,13 @@ const SECRET_TEXT_PATTERNS = [
   /\b(?:access[_-]?token|api[_-]?key|client[_-]?secret|id[_-]?token|refresh[_-]?token|secret|token|password|otp|credential|authorization|session|signature|ticket|auth[_-]?code|verification[_-]?code|reset[_-]?code|one[_-]?time[_-]?code)[_-][A-Za-z0-9._~+/=-]+/gi,
   /\b(?:access[_-]?token|api[_-]?key|client[_-]?secret|id[_-]?token|refresh[_-]?token|secret|token|password|otp|credential|authorization|session|signature|ticket|code)[=:]\s*(?:bearer\s+)?[^"'&<>]+/gi
 ];
+const CONTEXT_TEXT_PATTERNS = [
+  { pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, replacement: "{{EMAIL}}" },
+  { pattern: /\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, replacement: "{{PHONE_OR_ID}}" },
+  { pattern: /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, replacement: "{{ID}}" },
+  { pattern: /\b[A-Za-z0-9_-]{24,}\b/g, replacement: "{{ID}}" },
+  { pattern: /\b(?:otp|code|pin|verification)\s*[:#-]?\s*\d{4,8}\b/gi, replacement: "{{SECRET}}" }
+];
 
 function cleanText(value: string | null | undefined): string | undefined {
   const text = redactSecretText(value)?.replace(/\s+/g, " ").trim();
@@ -17,6 +24,17 @@ function cleanText(value: string | null | undefined): string | undefined {
     return undefined;
   }
   return text.slice(0, MAX_TEXT_LENGTH);
+}
+
+function cleanContextText(value: string | null | undefined): string | undefined {
+  const text = cleanText(value);
+  if (!text) {
+    return undefined;
+  }
+  return CONTEXT_TEXT_PATTERNS.reduce(
+    (current, { pattern, replacement }) => current.replace(pattern, replacement),
+    text
+  );
 }
 
 function redactSecretText(value: string | null | undefined): string | undefined {
@@ -276,7 +294,7 @@ function addContext(
   const item: TargetContext = {
     tagName: element.tagName.toLowerCase(),
     role: getElementRole(element),
-    text: shouldMaskValue(element) ? undefined : cleanText(element.innerText ?? element.textContent),
+    text: shouldMaskValue(element) ? undefined : cleanContextText(element.innerText ?? element.textContent),
     ariaLabel: cleanText(element.getAttribute("aria-label")),
     id: cleanText(element.id) || undefined,
     className: cleanText(element.className) || undefined,
