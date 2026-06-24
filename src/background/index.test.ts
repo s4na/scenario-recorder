@@ -325,7 +325,7 @@ describe("background", () => {
     });
   });
 
-  it("hides the overlay when the target tab leaves the configured domains", async () => {
+  it("hides the overlay when the target tab leaves the configured origins", async () => {
     localStorage.set("scenarioRecorder.recorderState", {
       status: "recording",
       currentSteps: [],

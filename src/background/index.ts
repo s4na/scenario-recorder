@@ -663,16 +663,22 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
     if (!await injectRecorderIntoTab(await chrome.tabs.get(tab.id))) {
       throw new Error("Could not prepare the scenario tab.");
     }
+    let previousStep: ScenarioStep | undefined;
     for (const step of scenario.steps) {
       if (step.type === "navigation" || step.type === "goto") {
         const nextUrl = step.type === "navigation" ? step.toUrl ?? step.url : step.url;
         if (nextUrl && isHttpUrl(nextUrl)) {
           assertScenarioUrlAllowed(nextUrl, settings);
-          await chrome.tabs.update(tab.id, { url: nextUrl });
+          if (previousStep && isNavigationTrigger(previousStep)) {
+            await waitForTabUrl(tab.id, nextUrl);
+          } else {
+            await chrome.tabs.update(tab.id, { url: nextUrl });
+          }
           await waitForTabReady(tab.id);
           await assertTabUrlAllowed(tab.id, settings);
           await injectRecorderIntoTab(await chrome.tabs.get(tab.id));
         }
+        previousStep = step;
         continue;
       }
       await assertTabUrlAllowed(tab.id, settings);
@@ -682,9 +688,35 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
       }
       await sendScenarioStep(tab.id, step);
       await waitForPossibleStepNavigation(tab.id, settings);
+      previousStep = step;
     }
     return { ok: true, scenario };
   });
+}
+
+async function waitForTabUrl(tabId: number, expectedUrl: string): Promise<void> {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (sameUrl((await chrome.tabs.get(tabId)).url, expectedUrl)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Timed out waiting for the scenario tab to reach ${expectedUrl}.`);
+}
+
+function sameUrl(actualUrl: string | undefined, expectedUrl: string): boolean {
+  if (!actualUrl) {
+    return false;
+  }
+  try {
+    return new URL(actualUrl).href === new URL(expectedUrl).href;
+  } catch {
+    return actualUrl === expectedUrl;
+  }
+}
+
+function isNavigationTrigger(step: ScenarioStep): boolean {
+  return step.type === "click" || step.type === "submit";
 }
 
 async function waitForPossibleStepNavigation(

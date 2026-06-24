@@ -578,6 +578,10 @@ function stepToPlaywright(step: ScenarioStep, previousStep: ScenarioStep | undef
     ];
   }
   if (step.type === "submit") {
+    const submitterSelector = targetToLocator(step.submitter);
+    if (submitterSelector) {
+      return [`  await ${submitterSelector}.click();`];
+    }
     return [`  await ${selector}.evaluate((element) => element instanceof HTMLFormElement ? element.requestSubmit() : element.closest('form')?.requestSubmit());`];
   }
   return [`  // Unsupported ${step.type} step`];

@@ -213,6 +213,9 @@ function resolveNavigationUrl(step: ScenarioStep): string | undefined {
 
 function getSubmitForm(step: ScenarioStep, target: HTMLElement): HTMLFormElement | undefined {
   if (step.type === "submit") {
+    if (target instanceof HTMLButtonElement || target instanceof HTMLInputElement) {
+      return target.form ?? undefined;
+    }
     return target instanceof HTMLFormElement ? target : target.closest("form") ?? undefined;
   }
   if (!(target instanceof HTMLButtonElement || target instanceof HTMLInputElement)) {
