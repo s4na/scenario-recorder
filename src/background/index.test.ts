@@ -134,6 +134,43 @@ describe("background", () => {
     ]);
   });
 
+  it("updates scenario metadata without overwriting recorded steps", async () => {
+    const keptStep: Scenario["steps"][number] = {
+      id: "kept_step",
+      type: "click",
+      timestamp: 0,
+      url: "https://app.example",
+      target: {
+        tagName: "button",
+        selectorCandidates: [{ type: "text", value: "Save", confidence: 80 }]
+      }
+    };
+    localStorage.set("scenarioRecorder.scenarios", [{
+      ...scenario("edit-id", "before", "2026-06-24T10:00:00.000Z"),
+      description: "old",
+      tags: ["old"],
+      steps: [keptStep]
+    }]);
+
+    const response = await sendMessage<{ scenarios: Scenario[] }>({
+      type: "UPDATE_SCENARIO",
+      payload: {
+        scenarioId: "edit-id",
+        name: "after",
+        description: "new",
+        tags: ["new"]
+      }
+    });
+
+    expect(response.scenarios[0]).toMatchObject({
+      id: "edit-id",
+      name: "after",
+      description: "new",
+      tags: ["new"]
+    });
+    expect(response.scenarios[0]?.steps).toEqual([keptStep]);
+  });
+
   it("stops reporting a tab as recording after it navigates outside target domains", async () => {
     const state: RecorderState = {
       status: "recording",

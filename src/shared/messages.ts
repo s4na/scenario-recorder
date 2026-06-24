@@ -38,7 +38,7 @@ export type MessageMap = {
     response: { scenario: Scenario; state: RecorderState };
   };
   UPDATE_SCENARIO: {
-    payload: { scenario: Scenario };
+    payload: { scenarioId: string; name: string; description: string; tags: string[] };
     response: { scenarios: Scenario[] };
   };
   IMPORT_SCENARIOS: {

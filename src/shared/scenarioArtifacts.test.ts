@@ -237,7 +237,7 @@ describe("scenario artifacts", () => {
           assertion: { kind: "url", expected: "https://example.com/callback?code={{SECRET}}" }
         }
       ]
-    });
+    }, { allowedOrigins: ["https://example.com"] });
 
     expect(code).toContain("function getRequiredEnv(name: string): string");
     expect(code).toContain("  const password = getRequiredEnv(\"PASSWORD\");");
@@ -306,7 +306,7 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
         }
       }]
-    })).toContain("  const classValue = getRequiredEnv(\"CLASS\");");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  const classValue = getRequiredEnv(\"CLASS\");");
     expect(scenarioToPlaywright({
       ...scenario,
       variables: {
@@ -325,7 +325,7 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
         }
       }]
-    })).toContain("  const secret_value_2 = getRequiredEnv(\"SECRET_VALUE\");");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  const secret_value_2 = getRequiredEnv(\"SECRET_VALUE\");");
     expect(scenarioToPlaywright({
       ...scenario,
       variables: {
@@ -344,7 +344,7 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
         }
       }]
-    })).toContain("  await page.locator(\"[id=\\\"user.email\\\"]\").fill(classValue);");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  await page.locator(\"[id=\\\"user.email\\\"]\").fill(classValue);");
     expect(scenarioToPlaywright({
       ...scenario,
       variables: {
@@ -361,7 +361,7 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "label", value: "Password", confidence: 90 }]
         }
       }]
-    })).toContain("  const letValue = getRequiredEnv(\"LET\");");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  const letValue = getRequiredEnv(\"LET\");");
   });
 
   it("generates regexp URL assertions for encoded secret masks", () => {
@@ -374,12 +374,13 @@ describe("scenario artifacts", () => {
         url: "https://example.com/callback?code=%7B%7BSECRET%7D%7D",
         assertion: { kind: "url", expected: "https://example.com/callback?code=%7B%7BSECRET%7D%7D" }
       }]
-    })).toContain(
+    }, { allowedOrigins: ["https://example.com"] })).toContain(
       "  await expect(page).toHaveURL(new RegExp(\"^https://example\\\\.com/callback\\\\?code=[^/?#&]+$\"));"
     );
   });
 
   it("blocks Playwright generation with secret variables outside allowed target domains", () => {
+    expect(() => scenarioToPlaywright(scenario)).toThrow("Set target domains");
     expect(() =>
       scenarioToPlaywright({
         ...scenario,
@@ -489,6 +490,10 @@ describe("scenario artifacts", () => {
         }
       }
     });
+    expect("unexpected" in parseScenarioImport({
+      ...scenario,
+      unexpected: "ignored"
+    })[0]).toBe(false);
   });
 
   it("rejects non-scenario imports", () => {

@@ -123,12 +123,10 @@ export default function App() {
     const response = await sendRuntimeMessage<"UPDATE_SCENARIO">({
       type: "UPDATE_SCENARIO",
       payload: {
-        scenario: {
-          ...scenario,
-          name: editName.trim() || scenario.name,
-          description: editDescription.trim(),
-          tags: editTags.split(",").map((tag) => tag.trim()).filter(Boolean)
-        }
+        scenarioId: scenario.id,
+        name: editName.trim() || scenario.name,
+        description: editDescription.trim(),
+        tags: editTags.split(",").map((tag) => tag.trim()).filter(Boolean)
       }
     });
     setScenarios(response.scenarios);

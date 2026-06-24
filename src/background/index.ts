@@ -436,11 +436,18 @@ async function saveCurrentScenario(
 }
 
 async function updateStoredScenario(
-  scenario: Scenario,
+  update: { scenarioId: string; name: string; description: string; tags: string[] },
 ): Promise<{ scenarios: Scenario[] }> {
   return enqueueStateMutation(async () => {
+    const existing = (await getScenarios()).find((scenario) => scenario.id === update.scenarioId);
+    if (!existing) {
+      throw new Error("Scenario not found.");
+    }
     await saveScenario({
-      ...withDerivedSecretVariables(scenario),
+      ...existing,
+      name: update.name,
+      description: update.description,
+      tags: update.tags,
       updatedAt: toIsoNow(),
     });
     return { scenarios: await getScenarios() };
@@ -615,7 +622,7 @@ async function handleMessage(
     case "SAVE_SCENARIO":
       return saveCurrentScenario(message.payload.name);
     case "UPDATE_SCENARIO":
-      return updateStoredScenario(message.payload.scenario);
+      return updateStoredScenario(message.payload);
     case "IMPORT_SCENARIOS":
       return importStoredScenarios(message.payload.scenarios);
     case "ADD_ASSERTION_STEP":

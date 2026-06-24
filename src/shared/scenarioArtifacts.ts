@@ -336,8 +336,11 @@ function assertAllowedSecretPlayback(
   context: PlaywrightContext,
   allowedOrigins: string[],
 ): void {
-  if (context.maskExpressions.size === 0 || allowedOrigins.length === 0) {
+  if (context.maskExpressions.size === 0) {
     return;
+  }
+  if (allowedOrigins.length === 0) {
+    throw new Error("Set target domains before generating Playwright with secret variables.");
   }
   const blockedUrl = scenarioUrls(scenario).find((url) => !isAllowedOrigin(url, allowedOrigins));
   if (blockedUrl) {
@@ -553,11 +556,20 @@ function normalizeScenario(value: unknown): Scenario {
     throw new Error("scenario-recorder/v1 のJSONを選択してください。");
   }
   return withDerivedSecretVariables({
-    ...value,
+    schemaVersion: value.schemaVersion,
+    id: value.id,
+    name: value.name,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    startUrl: value.startUrl,
+    baseUrl: value.baseUrl,
     variables: value.variables ?? {},
+    recording: value.recording,
+    steps: value.steps,
     assertions: value.assertions ?? [],
     tags: value.tags ?? [],
-    description: value.description ?? ""
+    description: value.description ?? "",
+    metadata: value.metadata
   });
 }
 

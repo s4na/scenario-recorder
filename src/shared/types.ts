@@ -51,21 +51,30 @@ export type TargetSnapshot = {
   };
 };
 
-export type ScenarioStep = {
+type ScenarioStepBase = {
   id: string;
-  type: ScenarioStepType;
   timestamp: number;
   url: string;
   title?: string;
   target?: TargetSnapshot;
-  value?: string | string[];
   fromUrl?: string;
   toUrl?: string;
-  assertion?: {
-    kind: "url" | "title";
-    expected: string;
-  };
 };
+
+export type ScenarioStep =
+  | (ScenarioStepBase & {
+      type: Exclude<ScenarioStepType, "assert">;
+      value?: string | string[];
+      assertion?: never;
+    })
+  | (ScenarioStepBase & {
+      type: "assert";
+      value?: never;
+      assertion: {
+        kind: "url" | "title";
+        expected: string;
+      };
+    });
 
 export type RecordingSession = {
   startedAt?: string;

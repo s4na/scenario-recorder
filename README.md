@@ -109,6 +109,7 @@ npm run build
 - MVPでは開発しやすさのため `host_permissions` に `<all_urls>` を使っています。
 - 本番運用では対象ドメインに絞るべきです。
 - popupの「対象ドメイン」で録画開始対象のoriginを絞れます。
+- secret変数を含むPlaywrightコード生成では、対象ドメイン設定が必要です。
 - 入力値は外部APIへ送信しません。
 - 入力値を `console.log` に出力しません。
 - password、token、secret、credit card系の入力値は保存前にマスクします。
