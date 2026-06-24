@@ -290,17 +290,76 @@ describe("scenario artifacts", () => {
     );
     expect(scenarioToPlaywright({
       ...scenario,
+      variables: {
+        "class": { type: "string", defaultValue: "{{PASSWORD}}", secret: true },
+        "secret-value": { type: "string", defaultValue: "{{SECRET}}", secret: true },
+        "secret_value": { type: "string", defaultValue: "{{CREDIT_CARD}}", secret: true }
+      },
       steps: [{
         id: "step_dot_id",
-        type: "click",
+        type: "fill",
         timestamp: 0,
         url: "https://example.com",
+        value: "{{PASSWORD}}",
         target: {
           tagName: "input",
           selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
         }
       }]
-    })).toContain("  await page.locator(\"[id=\\\"user.email\\\"]\").click();");
+    })).toContain("  const classValue = getRequiredEnv(\"CLASS\");");
+    expect(scenarioToPlaywright({
+      ...scenario,
+      variables: {
+        "class": { type: "string", defaultValue: "{{PASSWORD}}", secret: true },
+        "secret-value": { type: "string", defaultValue: "{{SECRET}}", secret: true },
+        "secret_value": { type: "string", defaultValue: "{{CREDIT_CARD}}", secret: true }
+      },
+      steps: [{
+        id: "step_dot_id",
+        type: "fill",
+        timestamp: 0,
+        url: "https://example.com",
+        value: "{{PASSWORD}}",
+        target: {
+          tagName: "input",
+          selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
+        }
+      }]
+    })).toContain("  const secret_value_2 = getRequiredEnv(\"SECRET_VALUE\");");
+    expect(scenarioToPlaywright({
+      ...scenario,
+      variables: {
+        "class": { type: "string", defaultValue: "{{PASSWORD}}", secret: true },
+        "secret-value": { type: "string", defaultValue: "{{SECRET}}", secret: true },
+        "secret_value": { type: "string", defaultValue: "{{CREDIT_CARD}}", secret: true }
+      },
+      steps: [{
+        id: "step_dot_id",
+        type: "fill",
+        timestamp: 0,
+        url: "https://example.com",
+        value: "{{PASSWORD}}",
+        target: {
+          tagName: "input",
+          selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
+        }
+      }]
+    })).toContain("  await page.locator(\"[id=\\\"user.email\\\"]\").fill(classValue);");
+  });
+
+  it("generates regexp URL assertions for encoded secret masks", () => {
+    expect(scenarioToPlaywright({
+      ...scenario,
+      steps: [{
+        id: "encoded_assert",
+        type: "assert",
+        timestamp: 0,
+        url: "https://example.com/callback?code=%7B%7BSECRET%7D%7D",
+        assertion: { kind: "url", expected: "https://example.com/callback?code=%7B%7BSECRET%7D%7D" }
+      }]
+    })).toContain(
+      "  await expect(page).toHaveURL(new RegExp(\"^https://example\\\\.com/callback\\\\?code=[^/?#&]+$\"));"
+    );
   });
 
   it("derives secret variables from masked values", () => {
@@ -444,7 +503,19 @@ describe("scenario artifacts", () => {
     expect(() =>
       parseScenarioImport({
         ...scenario,
+        variables: { broken: null }
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
         steps: [{ ...scenario.steps[1], value: ["a", "b"] }]
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
+        steps: [{ ...scenario.steps[1], value: undefined }]
       })
     ).toThrow("scenario-recorder/v1");
     expect(() =>

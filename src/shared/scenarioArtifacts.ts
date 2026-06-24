@@ -5,6 +5,49 @@ const MASK_VARIABLES: Record<string, { name: string; secret: boolean }> = {
   "{{SECRET}}": { name: "secret", secret: true },
   "{{CREDIT_CARD}}": { name: "creditCard", secret: true }
 };
+const MASK_TOKENS = Object.keys(MASK_VARIABLES);
+const MASK_PATTERNS = MASK_TOKENS.flatMap((mask) => [mask, encodeURIComponent(mask)]);
+const RESERVED_IDENTIFIERS = new Set([
+  "await",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "undefined",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield"
+]);
 
 const SELECTOR_CANDIDATE_TYPES: SelectorCandidateType[] = [
   "data-testid",
@@ -74,6 +117,28 @@ export const SCENARIO_JSON_SCHEMA = {
                     value: { oneOf: [{ type: "string" }, { type: "object" }] },
                     confidence: { type: "number" }
                   },
+                  allOf: [
+                    {
+                      if: { properties: { type: { const: "role" } } },
+                      then: {
+                        properties: {
+                          value: {
+                            type: "object",
+                            required: ["role"],
+                            properties: {
+                              role: { type: "string" },
+                              name: { type: "string" }
+                            },
+                            additionalProperties: true
+                          }
+                        }
+                      }
+                    },
+                    {
+                      if: { properties: { type: { enum: SELECTOR_CANDIDATE_TYPES.filter((type) => type !== "role") } } },
+                      then: { properties: { value: { type: "string" } } }
+                    }
+                  ],
                   additionalProperties: true
                 }
               },
@@ -112,10 +177,16 @@ export const SCENARIO_JSON_SCHEMA = {
           }
         },
         allOf: [
-          { if: { properties: { type: { const: "fill" } } }, then: { properties: { value: { type: "string" } } } },
+          {
+            if: { properties: { type: { const: "fill" } } },
+            then: { required: ["value"], properties: { value: { type: "string" } } }
+          },
           {
             if: { properties: { type: { const: "select" } } },
-            then: { properties: { value: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] } } }
+            then: {
+              required: ["value"],
+              properties: { value: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] } }
+            }
           },
           {
             if: { properties: { type: { enum: ["click", "submit", "navigation", "goto", "wait", "assert"] } } },
@@ -216,6 +287,7 @@ type PlaywrightContext = {
 function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
   const maskExpressions = new Map<string, string>();
   const variableDeclarations: string[] = [];
+  const usedIdentifiers = new Set<string>();
   for (const [name, variable] of Object.entries(scenario.variables ?? {})) {
     if (typeof variable.defaultValue !== "string" || !variable.secret) {
       continue;
@@ -223,7 +295,7 @@ function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
     if (!(variable.defaultValue in MASK_VARIABLES)) {
       continue;
     }
-    const identifier = toIdentifier(name);
+    const identifier = toUniqueIdentifier(name, usedIdentifiers);
     const envName = toEnvName(name);
     maskExpressions.set(variable.defaultValue, identifier);
     variableDeclarations.push(`const ${identifier} = getRequiredEnv(${JSON.stringify(envName)});`);
@@ -278,11 +350,11 @@ function isNavigationTrigger(step: ScenarioStep): boolean {
 }
 
 function urlAssertionExpression(expected: string): string {
-  if (!Object.keys(MASK_VARIABLES).some((mask) => expected.includes(mask))) {
+  if (!MASK_PATTERNS.some((mask) => expected.includes(mask))) {
     return JSON.stringify(expected);
   }
   let source = escapeRegExp(expected);
-  for (const mask of Object.keys(MASK_VARIABLES)) {
+  for (const mask of MASK_PATTERNS) {
     source = source.replaceAll(escapeRegExp(mask), "[^/?#&]+");
   }
   return `new RegExp(${JSON.stringify(`^${source}$`)})`;
@@ -321,9 +393,17 @@ function stringToPlaywrightExpression(value: string, context: PlaywrightContext)
   return `\`${parts.join("")}\``;
 }
 
-function toIdentifier(name: string): string {
+function toUniqueIdentifier(name: string, usedIdentifiers: Set<string>): string {
   const identifier = name.replace(/[^A-Za-z0-9_$]/g, "_").replace(/^[^A-Za-z_$]/, "_");
-  return identifier || "secretValue";
+  const base = identifier && !RESERVED_IDENTIFIERS.has(identifier) ? identifier : `${identifier || "secretValue"}Value`;
+  let candidate = base;
+  let suffix = 2;
+  while (usedIdentifiers.has(candidate) || RESERVED_IDENTIFIERS.has(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  usedIdentifiers.add(candidate);
+  return candidate;
 }
 
 function toEnvName(name: string): string {
@@ -445,7 +525,7 @@ function isScenario(value: unknown): value is Scenario {
     isOptionalString(scenario.startUrl) &&
     isOptionalString(scenario.baseUrl) &&
     isOptionalStringArray(scenario.tags) &&
-    isOptionalPlainObject(scenario.variables) &&
+    isOptionalVariables(scenario.variables) &&
     isOptionalArray(scenario.assertions)
   );
 }
@@ -564,8 +644,26 @@ function isOptionalArray(value: unknown): value is unknown[] | undefined {
   return value === undefined || Array.isArray(value);
 }
 
-function isOptionalPlainObject(value: unknown): value is Record<string, unknown> | undefined {
-  return value === undefined || (typeof value === "object" && value !== null && !Array.isArray(value));
+function isOptionalVariables(value: unknown): value is Scenario["variables"] | undefined {
+  return value === undefined || (isPlainObject(value) && Object.values(value).every(isScenarioVariable));
+}
+
+function isScenarioVariable(value: unknown): boolean {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  return (
+    (value.type === "string" || value.type === "number" || value.type === "boolean") &&
+    (value.defaultValue === undefined ||
+      typeof value.defaultValue === "string" ||
+      typeof value.defaultValue === "number" ||
+      typeof value.defaultValue === "boolean") &&
+    (value.secret === undefined || typeof value.secret === "boolean")
+  );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isIsoDateString(value: unknown): value is string {
