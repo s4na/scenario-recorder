@@ -838,7 +838,8 @@ function isScenarioStep(value: unknown): value is ScenarioStep {
     typeof step.url === "string" &&
     isValidStepValueForType(step.type, step.value) &&
     isValidStepAssertionForType(step.type, step.assertion) &&
-    (step.target === undefined || isTargetSnapshot(step.target))
+    (step.target === undefined || isTargetSnapshot(step.target)) &&
+    (step.submitter === undefined || isTargetSnapshot(step.submitter))
   );
 }
 

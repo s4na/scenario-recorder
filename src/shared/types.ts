@@ -71,6 +71,7 @@ type ScenarioStepBase = {
   url: string;
   title?: string;
   target?: TargetSnapshot;
+  submitter?: TargetSnapshot;
   fromUrl?: string;
   toUrl?: string;
 };

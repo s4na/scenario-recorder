@@ -180,6 +180,16 @@ function dispatchValueEvents(element: HTMLElement): void {
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function setNativeValue(
+  element: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+): void {
+  const prototype = element instanceof HTMLInputElement
+    ? HTMLInputElement.prototype
+    : HTMLTextAreaElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
+}
+
 async function executeStep(step: ScenarioStep): Promise<void> {
   if (step.type === "assert") {
     const actual = step.assertion.kind === "title" ? document.title : sanitizeUrl(location.href);
@@ -202,7 +212,7 @@ async function executeStep(step: ScenarioStep): Promise<void> {
       throw new Error("Fill target is not an input or textarea.");
     }
     target.focus();
-    target.value = step.value;
+    setNativeValue(target, step.value);
     dispatchValueEvents(target);
     return;
   }
@@ -218,6 +228,11 @@ async function executeStep(step: ScenarioStep): Promise<void> {
     return;
   }
   if (step.type === "submit") {
+    const submitter = findTarget(step.submitter);
+    if (submitter) {
+      submitter.click();
+      return;
+    }
     const form = target instanceof HTMLFormElement ? target : target.closest("form");
     if (form) {
       form.requestSubmit();

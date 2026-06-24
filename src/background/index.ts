@@ -599,6 +599,7 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
       throw new Error("Could not open a tab for the scenario.");
     }
     await waitForTabReady(tab.id);
+    await assertTabUrlAllowed(tab.id, settings);
     if (!await injectRecorderIntoTab(await chrome.tabs.get(tab.id))) {
       throw new Error("Could not prepare the scenario tab.");
     }
@@ -609,14 +610,41 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
           assertScenarioUrlAllowed(nextUrl, settings);
           await chrome.tabs.update(tab.id, { url: nextUrl });
           await waitForTabReady(tab.id);
+          await assertTabUrlAllowed(tab.id, settings);
           await injectRecorderIntoTab(await chrome.tabs.get(tab.id));
         }
         continue;
       }
+      await assertTabUrlAllowed(tab.id, settings);
       await sendScenarioStep(tab.id, step);
+      await waitForPossibleStepNavigation(tab.id, settings);
     }
     return { ok: true, scenario };
   });
+}
+
+async function waitForPossibleStepNavigation(
+  tabId: number,
+  settings: ScenarioRecorderSettings,
+): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForTabReady(tabId);
+  await assertTabUrlAllowed(tabId, settings);
+}
+
+async function assertTabUrlAllowed(
+  tabId: number,
+  settings: ScenarioRecorderSettings,
+): Promise<void> {
+  assertScenarioUrlAllowed(await getTabHttpUrl(tabId), settings);
+}
+
+async function getTabHttpUrl(tabId: number): Promise<string> {
+  const url = (await chrome.tabs.get(tabId)).url;
+  if (!url || !isHttpUrl(url)) {
+    throw new Error("Scenario tab is not on an HTTP or HTTPS URL.");
+  }
+  return url;
 }
 
 function assertScenarioUrlAllowed(
@@ -624,7 +652,7 @@ function assertScenarioUrlAllowed(
   settings: ScenarioRecorderSettings,
 ): void {
   if (!isAllowedBySettings(url, settings)) {
-    throw new Error("Scenario URL is outside the configured target domains.");
+    throw new Error("Scenario URL is outside the configured target origins.");
   }
 }
 

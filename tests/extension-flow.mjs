@@ -155,6 +155,14 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
     "Context scenario did not keep the destination select target and value.",
   );
   assert(
+    scenario.steps.some(
+      (step) =>
+        step.type === "submit" &&
+        targetMatches(step.submitter, { id: "submit-booking" }),
+    ),
+    "Context scenario did not keep the submitter target.",
+  );
+  assert(
     scenario.steps.some((step) => step.target?.context?.length > 0),
     "Context recording did not keep target context.",
   );
@@ -218,13 +226,18 @@ async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureO
     allowedOrigins: ["https://blocked.example.test"],
     recordingDetailLevel: "context",
   });
+  const blockedRunPages = new Set(await browser.pages());
   await assertRejects(
     () =>
       sendExtensionMessage(controlPage, {
         type: "EXECUTE_SCENARIO",
         payload: { scenarioId: scenario.id },
       }),
-    "Scenario URL is outside the configured target domains.",
+    "Scenario URL is outside the configured target origins.",
+  );
+  assert(
+    (await browser.pages()).every((page) => blockedRunPages.has(page)),
+    "Blocked scenario execution opened a new tab.",
   );
 }
 
@@ -378,13 +391,13 @@ function parseJsonl(text) {
 
 function targetMatches(target, expected) {
   return (
-    target?.id === expected.id ||
-    target?.name === expected.name ||
-    target?.label === expected.label ||
+    (expected.id !== undefined && target?.id === expected.id) ||
+    (expected.name !== undefined && target?.name === expected.name) ||
+    (expected.label !== undefined && target?.label === expected.label) ||
     target?.selectorCandidates?.some((candidate) =>
-      (candidate.type === "id" && candidate.value === expected.id) ||
-      (candidate.type === "name" && candidate.value === expected.name) ||
-      (candidate.type === "label" && candidate.value === expected.label)
+      (expected.id !== undefined && candidate.type === "id" && candidate.value === expected.id) ||
+      (expected.name !== undefined && candidate.type === "name" && candidate.value === expected.name) ||
+      (expected.label !== undefined && candidate.type === "label" && candidate.value === expected.label)
     ) === true
   );
 }
