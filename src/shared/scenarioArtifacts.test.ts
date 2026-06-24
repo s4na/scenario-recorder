@@ -325,7 +325,7 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
         }
       }]
-    }, { allowedOrigins: ["https://example.com"] })).toContain("  const secret_value_2 = getRequiredEnv(\"SECRET_VALUE\");");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  const secret_value_2 = getRequiredEnv(\"SECRET_VALUE_2\");");
     expect(scenarioToPlaywright({
       ...scenario,
       variables: {
@@ -426,6 +426,19 @@ describe("scenario artifacts", () => {
       type: "string",
       defaultValue: "user-defined",
       secret: false
+    });
+    expect(withDerivedSecretVariables({
+      ...scenario,
+      variables: {
+        password: {
+          type: "string",
+          secret: true
+        }
+      }
+    }).variables?.password).toEqual({
+      type: "string",
+      defaultValue: "{{PASSWORD}}",
+      secret: true
     });
   });
 

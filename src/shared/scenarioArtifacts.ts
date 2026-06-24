@@ -292,8 +292,10 @@ export function withDerivedSecretVariables(scenario: Scenario): Scenario {
         continue;
       }
       for (const [mask, variable] of Object.entries(MASK_VARIABLES)) {
-        if (value.includes(mask) && !variables[variable.name]) {
+        const existing = variables[variable.name];
+        if (value.includes(mask) && (!existing || (existing.secret && existing.defaultValue === undefined))) {
           variables[variable.name] = {
+            ...existing,
             type: "string",
             defaultValue: mask,
             secret: variable.secret
@@ -324,6 +326,7 @@ function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
   const maskExpressions = new Map<string, string>();
   const variableDeclarations: string[] = [];
   const usedIdentifiers = new Set<string>();
+  const usedEnvNames = new Set<string>();
   for (const [name, variable] of Object.entries(scenario.variables ?? {})) {
     if (typeof variable.defaultValue !== "string" || !variable.secret) {
       continue;
@@ -332,7 +335,7 @@ function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
       continue;
     }
     const identifier = toUniqueIdentifier(name, usedIdentifiers);
-    const envName = toEnvName(name);
+    const envName = toUniqueEnvName(name, usedEnvNames);
     maskExpressions.set(variable.defaultValue, identifier);
     variableDeclarations.push(`const ${identifier} = getRequiredEnv(${JSON.stringify(envName)});`);
   }
@@ -482,6 +485,18 @@ function toUniqueIdentifier(name: string, usedIdentifiers: Set<string>): string 
 
 function toEnvName(name: string): string {
   return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/[^A-Za-z0-9]+/g, "_").toUpperCase();
+}
+
+function toUniqueEnvName(name: string, usedEnvNames: Set<string>): string {
+  const base = toEnvName(name) || "SECRET_VALUE";
+  let candidate = base;
+  let suffix = 2;
+  while (usedEnvNames.has(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  usedEnvNames.add(candidate);
+  return candidate;
 }
 
 function escapeTemplateLiteral(value: string): string {
