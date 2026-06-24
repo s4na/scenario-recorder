@@ -2,6 +2,8 @@ name: release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -9,8 +11,31 @@ permissions:
   contents: read
 
 jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release-tag: ${{ steps.release-tag.outputs.release-tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Resolve release tag
+        id: release-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            release_tag="${GITHUB_REF_NAME}"
+          else
+            version="$(node -p "require('./package.json').version")"
+            short_sha="${GITHUB_SHA::7}"
+            release_tag="v${version}-${short_sha}"
+          fi
+          echo "release-tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+
   package-extension:
     runs-on: ubuntu-latest
+    needs: prepare-release
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -37,20 +62,24 @@ jobs:
         run: npm run validate:extension
 
       - name: Create extension archive
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release-tag }}
         run: |
           cd dist
-          zip -r "../scenario-recorder-${GITHUB_REF_NAME}.zip" .
+          zip -r "../scenario-recorder-${RELEASE_TAG}.zip" .
 
       - name: Upload extension archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: scenario-recorder-extension
-          path: scenario-recorder-${{ github.ref_name }}.zip
+          path: scenario-recorder-${{ needs.prepare-release.outputs.release-tag }}.zip
           if-no-files-found: error
 
   publish-release:
     runs-on: ubuntu-latest
-    needs: package-extension
+    needs:
+      - prepare-release
+      - package-extension
     permissions:
       contents: write
     steps:
@@ -62,9 +91,15 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release-tag }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            "scenario-recorder-${GITHUB_REF_NAME}.zip" \
+          target_args=()
+          if [[ "${GITHUB_REF_TYPE}" == "branch" ]]; then
+            target_args=(--target "${GITHUB_SHA}")
+          fi
+          gh release create "${RELEASE_TAG}" \
+            "scenario-recorder-${RELEASE_TAG}.zip" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "Scenario Recorder ${GITHUB_REF_NAME}" \
+            "${target_args[@]}" \
+            --title "Scenario Recorder ${RELEASE_TAG}" \
             --notes "Chrome extension package. Extract this zip and load the extracted directory from chrome://extensions."
