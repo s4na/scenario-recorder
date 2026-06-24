@@ -118,8 +118,12 @@ function ensureOverlayRoot(): ShadowRoot {
   }
   host = document.createElement("div");
   host.id = HOST_ID;
-  shadowRoot = host.attachShadow({ mode: "open" });
+  shadowRoot = host.attachShadow({ mode: "closed" });
   (document.documentElement || document.body).append(host);
+  return shadowRoot;
+}
+
+export function getRecordingOverlayRootForTest(): ShadowRoot | undefined {
   return shadowRoot;
 }
 

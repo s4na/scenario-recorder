@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { removeRecordingOverlay, renderRecordingOverlay } from "./overlay";
+import {
+  getRecordingOverlayRootForTest,
+  removeRecordingOverlay,
+  renderRecordingOverlay,
+} from "./overlay";
 
 describe("recording overlay", () => {
   afterEach(() => {
@@ -18,8 +22,10 @@ describe("recording overlay", () => {
 
     const host = document.getElementById("scenario-recorder-status-overlay");
     expect(host).not.toBeNull();
-    const text = host?.shadowRoot?.textContent ?? "";
-    const markup = host?.shadowRoot?.innerHTML ?? "";
+    expect(host?.shadowRoot).toBeNull();
+    const root = getRecordingOverlayRootForTest();
+    const text = root?.textContent ?? "";
+    const markup = root?.innerHTML ?? "";
     expect(text).toContain("シナリオ録画中");
     expect(text).toContain("recording");
     expect(text).toContain("3");
@@ -55,7 +61,8 @@ describe("recording overlay", () => {
     });
 
     const host = document.getElementById("scenario-recorder-status-overlay");
-    const text = host?.shadowRoot?.textContent ?? "";
+    expect(host?.shadowRoot).toBeNull();
+    const text = getRecordingOverlayRootForTest()?.textContent ?? "";
     expect(text).toContain("シナリオ一時停止中");
     expect(text).toContain("paused");
   });
