@@ -78,11 +78,11 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
     allowedOrigins: [fixtureOrigin],
     recordingDetailLevel: "context",
   });
-  await setPopupInput(controlPage, "scenario-name", "Codex向け予約作成");
   await fixturePage.bringToFront();
   await clickPopup(controlPage, "start-recording");
   await waitForRecorderStatus(controlPage, "recording");
   await waitForOverlay(fixturePage, "recording");
+  await controlPage.reload({ waitUntil: "domcontentloaded" });
   await fixturePage.click("#choose-package");
   await fixturePage.type("#traveler-name", "Sana Tester");
   await fixturePage.click("#destination");
@@ -103,6 +103,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   ]);
   await clickPopup(controlPage, "stop-recording");
   await waitForRecorderStatus(controlPage, "idle");
+  await setPopupInput(controlPage, "scenario-name", "Codex向け予約作成");
   await clickPopup(controlPage, "save-scenario");
   await waitForScenarioCount(controlPage, 1);
 

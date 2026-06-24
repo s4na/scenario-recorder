@@ -235,13 +235,14 @@ export default function App() {
             data-testid="scenario-name"
             value={scenarioName}
             onChange={(event) => setScenarioName(event.target.value)}
-            placeholder="例: 予約作成"
+            placeholder="保存するときに入力"
           />
         </label>
 
         <div className="modeGroup" aria-label="記録の詳細度">
           <button
             data-testid="mode-context"
+            aria-pressed={settings.recordingDetailLevel === "context"}
             className={settings.recordingDetailLevel === "context" ? "selected" : ""}
             disabled={isBusy}
             onClick={() =>
@@ -261,6 +262,7 @@ export default function App() {
           </button>
           <button
             data-testid="mode-minimal"
+            aria-pressed={settings.recordingDetailLevel === "minimal"}
             className={settings.recordingDetailLevel === "minimal" ? "selected" : ""}
             disabled={isBusy}
             onClick={() =>
@@ -285,7 +287,7 @@ export default function App() {
             <button
               data-testid="start-recording"
               className="primary"
-              disabled={isBusy || scenarioName.trim().length === 0}
+              disabled={isBusy}
               onClick={() => runAction(() => sendRuntimeMessage<"START_RECORDING">({ type: "START_RECORDING" }).then(setState), "記録を開始しました")}
             >
               記録開始
