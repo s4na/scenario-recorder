@@ -11,6 +11,7 @@
     "lint": "oxlint --deny-warnings",
     "test": "vitest run",
     "build": "tsc --noEmit && vite build",
+    "validate:extension": "node scripts/validate-extension.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -43,6 +43,19 @@ npm run build
 
 ## Chromeで拡張を読み込む方法
 
+### Releaseから読み込む場合
+
+1. GitHub Releasesから `scenario-recorder-v*.zip` をダウンロードします。
+2. zipを展開します。
+3. Chromeで `chrome://extensions` を開きます。
+4. 右上の「デベロッパー モード」を有効にします。
+5. 「パッケージ化されていない拡張機能を読み込む」を押します。
+6. 展開したディレクトリを選択します。
+
+GitHubが自動生成する「Source code」zipは開発用ソースです。Chrome拡張として読み込むための `assets/*.js` を含まないため、そのまま読み込まないでください。
+
+### ローカルでビルドして読み込む場合
+
 1. `npm run build` を実行します。
 2. Chromeで `chrome://extensions` を開きます。
 3. 右上の「デベロッパー モード」を有効にします。
