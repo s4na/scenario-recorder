@@ -182,7 +182,10 @@ async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureO
   await fixturePage.click("#login-email");
   await fixturePage.type("#login-email", "user@example.com");
   await fixturePage.click("#login-submit");
-  await waitForSteps(controlPage, (steps) => steps.some((step) => step.type === "fill"));
+  await waitForSteps(controlPage, (steps) =>
+    steps.some((step) => step.type === "fill") &&
+    steps.some((step) => step.type === "click" && targetMatches(step.target, { id: "login-submit", name: "", label: "" }))
+  );
   await sendExtensionMessage(controlPage, { type: "STOP_RECORDING" });
   await sendExtensionMessage(controlPage, {
     type: "SAVE_SCENARIO",
