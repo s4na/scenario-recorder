@@ -95,8 +95,7 @@ export default function App() {
   const canResume = state.status === "paused";
   const canStop = state.status === "recording" || state.status === "paused";
   const canClear = state.currentSteps.length > 0 && state.status !== "idle" ? true : state.currentSteps.length > 0;
-  const canSave =
-    state.status === "idle" && state.currentSteps.length > 0 && scenarioName.trim().length > 0;
+  const canSave = state.status === "idle" && state.currentSteps.length > 0;
   const canExportAll = scenarios.length > 0;
   const latestScenario = useMemo(
     () => scenarios.find((scenario) => scenario.id === lastSavedScenarioId) ?? scenarios[0],
@@ -246,7 +245,7 @@ export default function App() {
             data-testid="scenario-name"
             value={scenarioName}
             onChange={(event) => setScenarioName(event.target.value)}
-            placeholder="保存するときに入力"
+            placeholder="空なら日時で保存"
           />
         </label>
 

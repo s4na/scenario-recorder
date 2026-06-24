@@ -52,8 +52,8 @@ try {
   const scenarios = await getScenarios(controlPage);
   assert(scenarios.length === 2, `Expected 2 saved scenarios, got ${scenarios.length}.`);
   assert(
-    scenarios.some((scenario) => scenario.name === "Codex向け予約作成"),
-    "Context scenario was not saved.",
+    scenarios.some((scenario) => isDefaultScenarioName(scenario.name)),
+    "Unnamed context scenario was not saved with a timestamp name.",
   );
   assert(
     scenarios.some((scenario) => scenario.name === "軽量ログイン確認"),
@@ -127,12 +127,11 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   ]);
   await clickPopup(controlPage, "stop-recording");
   await waitForRecorderStatus(controlPage, "idle");
-  await setPopupInput(controlPage, "scenario-name", "Codex向け予約作成");
   await clickPopup(controlPage, "save-scenario");
   await waitForScenarioCount(controlPage, 1);
 
   const [scenario] = await getScenarios(controlPage);
-  assert(scenario.name === "Codex向け予約作成", "Latest scenario name did not match.");
+  assert(isDefaultScenarioName(scenario.name), "Unnamed context scenario did not use the timestamp default name.");
   const stepTypes = scenario.steps.map((step) => step.type);
   for (const type of ["click", "fill", "select", "submit"]) {
     assert(stepTypes.includes(type), `Context scenario is missing ${type} step.`);
@@ -384,6 +383,10 @@ function targetMatches(target, expected) {
       (candidate.type === "label" && candidate.value === expected.label)
     ) === true
   );
+}
+
+function isDefaultScenarioName(name) {
+  return /^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}$/.test(name);
 }
 
 async function sendExtensionMessage(controlPage, message) {

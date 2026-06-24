@@ -21,6 +21,7 @@ import type {
 import {
   createId,
   createStepId,
+  formatTimestampForScenarioName,
   sanitizeUrl,
   shouldReplaceFillStep,
   toIsoNow,
@@ -429,7 +430,8 @@ async function saveCurrentScenario(
     if (state.currentSteps.length === 0) {
       throw new Error("Cannot save a scenario without recorded steps.");
     }
-    const scenario = withDerivedSecretVariables(createScenario(name, state));
+    const scenarioName = name.trim() || formatTimestampForScenarioName();
+    const scenario = withDerivedSecretVariables(createScenario(scenarioName, state));
     await saveScenario(scenario);
     await clearRecorderState();
     return { scenario, state: await getRecorderState() };
