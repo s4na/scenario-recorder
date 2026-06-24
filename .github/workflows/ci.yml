@@ -66,5 +66,8 @@ jobs:
       - name: Build extension
         run: npm run build
 
+      - name: Validate Chrome extension package
+        run: npm run validate:extension
+
       - name: Audit production dependencies
         run: npm audit --omit=dev
