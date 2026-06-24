@@ -77,6 +77,7 @@ function runChromeSmokeTest() {
   const result = spawnSync(chrome, [
     "--headless=new",
     "--disable-gpu",
+    "--no-sandbox",
     "--disable-extensions-except=" + extensionDir,
     "--load-extension=" + extensionDir,
     "--no-first-run",
