@@ -103,7 +103,7 @@ function findByLabel(text: string): HTMLElement | undefined {
   if (label.control instanceof HTMLElement) {
     return label.control;
   }
-  return label.querySelector<HTMLElement>("input,textarea,select,button");
+  return label.querySelector<HTMLElement>("input,textarea,select,button") ?? undefined;
 }
 
 function findByCandidate(candidate: SelectorCandidate): HTMLElement | undefined {
