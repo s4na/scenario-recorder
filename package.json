@@ -10,6 +10,7 @@
     "dev": "vite",
     "lint": "oxlint --deny-warnings",
     "test": "vitest run",
+    "test:e2e": "node tests/extension-flow.mjs",
     "build": "tsc --noEmit && vite build",
     "validate:extension": "node scripts/validate-extension.mjs",
     "preview": "vite preview"
@@ -26,6 +27,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^29.1.1",
     "oxlint": "^1.70.0",
+    "puppeteer-core": "^25.1.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vitest": "^4.1.9"

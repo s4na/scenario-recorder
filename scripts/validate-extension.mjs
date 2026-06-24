@@ -85,6 +85,7 @@ function runChromeSmokeTest() {
     "data:text/html,<title>scenario-recorder-smoke</title>",
   ], {
     encoding: "utf8",
+    killSignal: "SIGKILL",
     timeout: 15000,
   });
   rmSync(userDataDir, { recursive: true, force: true });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentMessage } from "../shared/messages";
 import { sendRuntimeMessage } from "../shared/messages";
 import { parseScenarioImportText, scenarioToJsonl, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
-import type { RecorderState, Scenario, ScenarioRecorderSettings } from "../shared/types";
+import type { RecorderState, Scenario, ScenarioRecorderSettings, ScenarioStep } from "../shared/types";
 import { downloadJson, downloadText, formatTimestampForFile, sanitizeFilePart } from "../shared/utils";
 import { playwrightDownloadPayload } from "./downloads";
 
@@ -32,6 +32,35 @@ function allScenariosFileName(): string {
   return `scenario-recorder-export-${formatTimestampForFile()}.json`;
 }
 
+function scenarioJsonlFileName(scenario: Scenario): string {
+  return `${sanitizeFilePart(scenario.name)}.jsonl`;
+}
+
+function describeStep(step: ScenarioStep): string {
+  const targetName = step.target?.label ?? step.target?.ariaLabel ?? step.target?.text ?? step.target?.placeholder;
+  const target = targetName ? `「${targetName}」` : step.target?.tagName?.toLowerCase();
+  switch (step.type) {
+    case "click":
+      return target ? `${target}をクリック` : "クリック";
+    case "fill":
+      return target ? `${target}に入力` : "入力";
+    case "select":
+      return target ? `${target}を選択` : "選択";
+    case "submit":
+      return target ? `${target}を送信` : "送信";
+    case "navigation":
+      return "ページ遷移";
+    case "assert":
+      return step.assertion?.kind === "title" ? "タイトルを確認" : "URLを確認";
+    default:
+      return step.type;
+  }
+}
+
+function detailLevelLabel(detailLevel: ScenarioRecorderSettings["recordingDetailLevel"]): string {
+  return detailLevel === "context" ? "Codex向け" : "軽量";
+}
+
 function isContentScriptUnavailableError(message: string): boolean {
   return (
     message.includes("Could not establish connection") ||
@@ -52,6 +81,7 @@ export default function App() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editTags, setEditTags] = useState("");
+  const [lastSavedScenarioId, setLastSavedScenarioId] = useState<string | undefined>();
   const [notice, setNotice] = useState<Notice | undefined>();
   const [isBusy, setIsBusy] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -63,13 +93,17 @@ export default function App() {
   const canClear = state.currentSteps.length > 0 && state.status !== "idle" ? true : state.currentSteps.length > 0;
   const canSave =
     state.status === "idle" && state.currentSteps.length > 0 && scenarioName.trim().length > 0;
-  const canDownloadCurrent = state.currentSteps.length > 0;
   const canExportAll = scenarios.length > 0;
+  const latestScenario = useMemo(
+    () => scenarios.find((scenario) => scenario.id === lastSavedScenarioId) ?? scenarios[0],
+    [lastSavedScenarioId, scenarios],
+  );
+  const recentSteps = state.currentSteps.slice(-5).reverse();
 
   const statusLabel = useMemo(() => {
-    if (state.status === "recording") return "recording";
-    if (state.status === "paused") return "paused";
-    return "idle";
+    if (state.status === "recording") return "記録中";
+    if (state.status === "paused") return "一時停止";
+    return state.currentSteps.length > 0 ? "確認待ち" : "待機中";
   }, [state.status]);
 
   async function refresh() {
@@ -180,106 +214,276 @@ export default function App() {
         </div>
         <div className="counter">
           <span>{state.currentSteps.length}</span>
-          <small>steps</small>
+          <small>記録</small>
         </div>
       </header>
 
       {notice ? <p className={`notice ${notice.kind}`}>{notice.text}</p> : null}
 
-      <section className="section">
+      <section className="section focusPanel">
+        <div className="sectionHeader">
+          <div>
+            <h2>作る</h2>
+            <p>いま開いているタブの操作を記録</p>
+          </div>
+          <span>{detailLevelLabel(settings.recordingDetailLevel)}</span>
+        </div>
+
         <label className="field">
           <span>シナリオ名</span>
           <input
+            data-testid="scenario-name"
             value={scenarioName}
             onChange={(event) => setScenarioName(event.target.value)}
             placeholder="例: 予約作成"
           />
         </label>
 
-        <div className="actions">
-          <button disabled={!canStart || isBusy} onClick={() => runAction(() => sendRuntimeMessage<"START_RECORDING">({ type: "START_RECORDING" }).then(setState), "記録を開始しました")}>
-            記録開始
+        <div className="modeGroup" aria-label="記録の詳細度">
+          <button
+            data-testid="mode-context"
+            className={settings.recordingDetailLevel === "context" ? "selected" : ""}
+            disabled={isBusy}
+            onClick={() =>
+              runAction(async () => {
+                const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
+                  type: "UPDATE_SETTINGS",
+                  payload: {
+                    allowedOrigins: settings.allowedOrigins,
+                    recordingDetailLevel: "context"
+                  }
+                });
+                setSettings(nextSettings);
+              }, "記録の詳細度を保存しました")
+            }
+          >
+            Codex向け
           </button>
-          <button disabled={!canPause || isBusy} onClick={() => runAction(async () => {
-            await flushActiveTabInputs();
-            setState(await sendRuntimeMessage<"PAUSE_RECORDING">({ type: "PAUSE_RECORDING" }));
-          }, "一時停止しました")}>
-            一時停止
+          <button
+            data-testid="mode-minimal"
+            className={settings.recordingDetailLevel === "minimal" ? "selected" : ""}
+            disabled={isBusy}
+            onClick={() =>
+              runAction(async () => {
+                const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
+                  type: "UPDATE_SETTINGS",
+                  payload: {
+                    allowedOrigins: settings.allowedOrigins,
+                    recordingDetailLevel: "minimal"
+                  }
+                });
+                setSettings(nextSettings);
+              }, "記録の詳細度を保存しました")
+            }
+          >
+            軽量
           </button>
-          <button disabled={!canResume || isBusy} onClick={() => runAction(() => sendRuntimeMessage<"RESUME_RECORDING">({ type: "RESUME_RECORDING" }).then(setState), "再開しました")}>
-            再開
+        </div>
+
+        <div className="primaryActions">
+          {canStart ? (
+            <button
+              data-testid="start-recording"
+              className="primary"
+              disabled={isBusy || scenarioName.trim().length === 0}
+              onClick={() => runAction(() => sendRuntimeMessage<"START_RECORDING">({ type: "START_RECORDING" }).then(setState), "記録を開始しました")}
+            >
+              記録開始
+            </button>
+          ) : null}
+          {canPause ? (
+            <button data-testid="pause-recording" className="primary" disabled={isBusy} onClick={() => runAction(async () => {
+              await flushActiveTabInputs();
+              setState(await sendRuntimeMessage<"PAUSE_RECORDING">({ type: "PAUSE_RECORDING" }));
+            }, "一時停止しました")}>
+              一時停止
+            </button>
+          ) : null}
+          {canResume ? (
+            <button data-testid="resume-recording" className="primary" disabled={isBusy} onClick={() => runAction(() => sendRuntimeMessage<"RESUME_RECORDING">({ type: "RESUME_RECORDING" }).then(setState), "再開しました")}>
+              再開
+            </button>
+          ) : null}
+          {canStop ? (
+            <button data-testid="stop-recording" disabled={isBusy} onClick={() => runAction(async () => {
+              await flushActiveTabInputs();
+              setState(await sendRuntimeMessage<"STOP_RECORDING">({ type: "STOP_RECORDING" }));
+            }, "確認へ進みます")}>
+              停止して確認
+            </button>
+          ) : null}
+        </div>
+
+        <div className="supportActions">
+          <button
+            disabled={state.status === "idle" || isBusy}
+            onClick={() =>
+              runAction(async () => {
+                setState(await sendRuntimeMessage<"ADD_ASSERTION_STEP">({
+                  type: "ADD_ASSERTION_STEP",
+                  payload: { kind: "url" }
+                }));
+              }, "URL確認を追加しました")
+            }
+          >
+            URL確認を追加
           </button>
-          <button disabled={!canStop || isBusy} onClick={() => runAction(async () => {
-            await flushActiveTabInputs();
-            setState(await sendRuntimeMessage<"STOP_RECORDING">({ type: "STOP_RECORDING" }));
-          }, "停止しました")}>
-            停止
+          <button
+            disabled={state.status === "idle" || isBusy}
+            onClick={() =>
+              runAction(async () => {
+                setState(await sendRuntimeMessage<"ADD_ASSERTION_STEP">({
+                  type: "ADD_ASSERTION_STEP",
+                  payload: { kind: "title" }
+                }));
+              }, "タイトル確認を追加しました")
+            }
+          >
+            タイトル確認を追加
           </button>
           <button disabled={!canClear || isBusy} onClick={() => runAction(() => sendRuntimeMessage<"CLEAR_RECORDING">({ type: "CLEAR_RECORDING" }).then(setState), "現在の記録をクリアしました")}>
             クリア
           </button>
-          <button
-            disabled={!canSave || isBusy}
-            onClick={() =>
-              runAction(async () => {
-                await flushActiveTabInputs();
-                await sendRuntimeMessage<"SAVE_SCENARIO">({
-                  type: "SAVE_SCENARIO",
-                  payload: { name: scenarioName.trim() }
-                });
-                setScenarioName("");
-              }, "シナリオを保存しました")
-            }
-          >
-            保存
-          </button>
         </div>
 
-        <div className="exportActions">
+        {state.currentSteps.length > 0 ? (
+          <div className="stepPreview" aria-label="現在の記録">
+            <div className="sectionHeader compact">
+              <h3>今回の記録</h3>
+              <span>{state.currentSteps.length} steps</span>
+            </div>
+            <ol>
+              {recentSteps.map((step) => (
+                <li key={step.id}>
+                  <span>{step.type}</span>
+                  <strong>{describeStep(step)}</strong>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+
+        {state.status === "idle" && state.currentSteps.length > 0 ? (
+          <div className="savePanel">
+            <button
+              data-testid="save-scenario"
+              className="primary"
+              disabled={!canSave || isBusy}
+              onClick={() =>
+                runAction(async () => {
+                  await flushActiveTabInputs();
+                  const response = await sendRuntimeMessage<"SAVE_SCENARIO">({
+                    type: "SAVE_SCENARIO",
+                    payload: { name: scenarioName.trim() }
+                  });
+                  setLastSavedScenarioId(response.scenario.id);
+                  setScenarioName("");
+                }, "シナリオを保存しました")
+              }
+            >
+              保存してJSONLへ進む
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      {latestScenario ? (
+        <section className="section handoffPanel">
+          <div className="sectionHeader">
+            <div>
+              <h2>渡す</h2>
+              <p>{latestScenario.name}</p>
+            </div>
+            <span>{latestScenario.steps.length} steps</span>
+          </div>
           <button
-            disabled={!canDownloadCurrent || isBusy}
-            onClick={() =>
-              runAction(async () => {
-                await flushActiveTabInputs();
-                const latestState = await sendRuntimeMessage<"GET_RECORDER_STATE">({
-                  type: "GET_RECORDER_STATE"
-                });
-                setState(latestState);
-                const filename = `current-recording-${formatTimestampForFile()}.json`;
-                downloadJson(filename, {
-                  schemaVersion: "scenario-recorder/current/v1",
-                  exportedAt: new Date().toISOString(),
-                  state: latestState
-                });
-              }, "現在の記録をダウンロードしました")
-            }
+            className="primary"
+            onClick={() => downloadText(scenarioJsonlFileName(latestScenario), scenarioToJsonl(latestScenario), "application/x-ndjson;charset=utf-8")}
           >
-            現在の記録をJSONでダウンロード
+            Codex用JSONLをダウンロード
           </button>
-          <button
-            disabled={!canExportAll || isBusy}
-            onClick={() =>
-              runAction(async () => {
-                const exportPayload = await sendRuntimeMessage<"EXPORT_ALL_SCENARIOS">({
-                  type: "EXPORT_ALL_SCENARIOS"
-                });
-                downloadJson(allScenariosFileName(), exportPayload);
-              }, "全シナリオをエクスポートしました")
-            }
-          >
-            全シナリオを一括エクスポート
-          </button>
-          <button disabled={isBusy} onClick={() => importInputRef.current?.click()}>
-            シナリオJSON/JSONLをインポート
-          </button>
+          <div className="supportActions">
+            <button onClick={() => downloadJson(scenarioFileName(latestScenario), latestScenario)}>
+              JSON
+            </button>
+            <button
+              onClick={() =>
+                runAction(async () => {
+                  const payload = playwrightDownloadPayload(latestScenario, settings);
+                  downloadText(payload.filename, payload.text, payload.type);
+                })
+              }
+            >
+              Playwright
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      <details className="section settingsPanel">
+        <summary>対象と管理</summary>
+        <div className="detailsBody">
+          <div className="sectionHeader">
+            <h2>対象ドメイン</h2>
+            <span>{settings.allowedOrigins.length || "all"}</span>
+          </div>
+          <label className="field">
+            <span>1行に1 origin</span>
+            <textarea
+              value={allowedOriginsText}
+              onChange={(event) => {
+                setIsEditingAllowedOrigins(true);
+                setAllowedOriginsText(event.target.value);
+              }}
+              placeholder="https://staging.example.com"
+            />
+          </label>
           <button
             disabled={isBusy}
             onClick={() =>
-              downloadJson("scenario-recorder.schema.json", SCENARIO_JSON_SCHEMA)
+              runAction(async () => {
+                const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
+                  type: "UPDATE_SETTINGS",
+                  payload: {
+                    allowedOrigins: allowedOriginsText.split("\n"),
+                    recordingDetailLevel: settings.recordingDetailLevel
+                  }
+                });
+                setSettings(nextSettings);
+                setAllowedOriginsText(nextSettings.allowedOrigins.join("\n"));
+                setIsEditingAllowedOrigins(false);
+              }, "対象ドメインを保存しました")
             }
           >
-            互換JSON Schemaをダウンロード
+            対象ドメインを保存
           </button>
+
+          <div className="managementActions">
+            <button
+              disabled={!canExportAll || isBusy}
+              onClick={() =>
+                runAction(async () => {
+                  const exportPayload = await sendRuntimeMessage<"EXPORT_ALL_SCENARIOS">({
+                    type: "EXPORT_ALL_SCENARIOS"
+                  });
+                  downloadJson(allScenariosFileName(), exportPayload);
+                }, "全シナリオをエクスポートしました")
+              }
+            >
+              全シナリオをエクスポート
+            </button>
+            <button disabled={isBusy} onClick={() => importInputRef.current?.click()}>
+              インポート
+            </button>
+            <button
+              disabled={isBusy}
+              onClick={() =>
+                downloadJson("scenario-recorder.schema.json", SCENARIO_JSON_SCHEMA)
+              }
+            >
+              JSON Schema
+            </button>
+          </div>
           <input
             ref={importInputRef}
             className="hiddenInput"
@@ -295,101 +499,7 @@ export default function App() {
             }}
           />
         </div>
-      </section>
-
-      <section className="section">
-        <div className="sectionHeader">
-          <h2>対象ドメイン</h2>
-          <span>{settings.allowedOrigins.length || "all"}</span>
-        </div>
-        <label className="field">
-          <span>1行に1 origin。空なら全HTTP/HTTPSページを対象にします。</span>
-          <textarea
-            value={allowedOriginsText}
-            onChange={(event) => {
-              setIsEditingAllowedOrigins(true);
-              setAllowedOriginsText(event.target.value);
-            }}
-            placeholder="https://staging.example.com"
-          />
-        </label>
-        <button
-          disabled={isBusy}
-          onClick={() =>
-            runAction(async () => {
-              const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
-                type: "UPDATE_SETTINGS",
-                payload: {
-                  allowedOrigins: allowedOriginsText.split("\n"),
-                  recordingDetailLevel: settings.recordingDetailLevel
-                }
-              });
-              setSettings(nextSettings);
-              setAllowedOriginsText(nextSettings.allowedOrigins.join("\n"));
-              setIsEditingAllowedOrigins(false);
-            }, "対象ドメインを保存しました")
-          }
-        >
-          対象ドメインを保存
-        </button>
-        <label className="field">
-          <span>記録の詳細度</span>
-          <select
-            value={settings.recordingDetailLevel}
-            onChange={(event) =>
-              runAction(async () => {
-                const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
-                  type: "UPDATE_SETTINGS",
-                  payload: {
-                    allowedOrigins: settings.allowedOrigins,
-                    recordingDetailLevel: event.target.value === "context" ? "context" : "minimal"
-                  }
-                });
-                setSettings(nextSettings);
-              }, "記録の詳細度を保存しました")
-            }
-            disabled={isBusy}
-          >
-            <option value="minimal">minimal: 対象要素だけ</option>
-            <option value="context">context: 周辺文脈も保存</option>
-          </select>
-        </label>
-      </section>
-
-      <section className="section">
-        <div className="sectionHeader">
-          <h2>assertion</h2>
-          <span>{state.currentSteps.filter((step) => step.type === "assert").length}</span>
-        </div>
-        <div className="scenarioActions">
-          <button
-            disabled={state.status === "idle" || isBusy}
-            onClick={() =>
-              runAction(async () => {
-                setState(await sendRuntimeMessage<"ADD_ASSERTION_STEP">({
-                  type: "ADD_ASSERTION_STEP",
-                  payload: { kind: "url" }
-                }));
-              }, "URL assertionを追加しました")
-            }
-          >
-            現在URLをassert
-          </button>
-          <button
-            disabled={state.status === "idle" || isBusy}
-            onClick={() =>
-              runAction(async () => {
-                setState(await sendRuntimeMessage<"ADD_ASSERTION_STEP">({
-                  type: "ADD_ASSERTION_STEP",
-                  payload: { kind: "title" }
-                }));
-              }, "タイトル assertionを追加しました")
-            }
-          >
-            タイトルをassert
-          </button>
-        </div>
-      </section>
+      </details>
 
       <section className="section scenarioList">
         <div className="sectionHeader">
@@ -427,8 +537,8 @@ export default function App() {
                   <small>更新: {new Date(scenario.updatedAt).toLocaleString()}</small>
                 </div>
                 <div className="scenarioActions">
-                  <button onClick={() => downloadText(`${sanitizeFilePart(scenario.name)}.jsonl`, scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
-                    JSONLエクスポート
+                  <button className="primary" onClick={() => downloadText(scenarioJsonlFileName(scenario), scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
+                    JSONL
                   </button>
                   <button onClick={() => downloadJson(scenarioFileName(scenario), scenario)}>
                     JSON

@@ -13,6 +13,9 @@ export function renderRecordingOverlay(
     return;
   }
   const root = ensureOverlayRoot();
+  if (host) {
+    host.dataset.status = state.status;
+  }
   const statusClass = state.status === "recording" ? "recording" : "paused";
   const title = state.status === "recording" ? "シナリオ録画中" : "シナリオ一時停止中";
   root.innerHTML = `

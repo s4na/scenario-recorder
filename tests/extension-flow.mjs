@@ -1,0 +1,378 @@
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { isAbsolute, resolve } from "node:path";
+import puppeteer from "puppeteer-core";
+
+const extensionDir = resolve(process.argv[2] ?? "dist");
+
+if (!existsSync(extensionDir)) {
+  fail(`Extension directory is missing: ${extensionDir}`);
+}
+
+const fixtureServer = await startFixtureServer();
+const fixtureOrigin = `http://127.0.0.1:${fixtureServer.port}`;
+const userDataDir = mkdtempSync(`${tmpdir()}/scenario-recorder-e2e-`);
+let browser;
+
+try {
+  browser = await puppeteer.launch({
+    executablePath: findChrome(),
+    headless: false,
+    userDataDir,
+    args: [
+      "--disable-gpu",
+      "--no-sandbox",
+      "--disable-extensions-except=" + extensionDir,
+      "--load-extension=" + extensionDir,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--window-size=1280,900",
+    ],
+  });
+
+  const fixturePage = await browser.newPage();
+  await fixturePage.goto(`${fixtureOrigin}/fixture?case=context`, { waitUntil: "domcontentloaded" });
+  const extensionId = await waitForExtensionId(browser);
+  const controlPage = await browser.newPage();
+  await controlPage.goto(`chrome-extension://${extensionId}/index.html`, { waitUntil: "domcontentloaded" });
+  await clearExtensionStorage(controlPage);
+
+  await runContextRecording({ controlPage, fixturePage, fixtureOrigin });
+  await runMinimalRecording({ controlPage, fixturePage, fixtureOrigin });
+
+  const scenarios = await getScenarios(controlPage);
+  assert(scenarios.length === 2, `Expected 2 saved scenarios, got ${scenarios.length}.`);
+  assert(
+    scenarios.some((scenario) => scenario.name === "Codex向け予約作成"),
+    "Context scenario was not saved.",
+  );
+  assert(
+    scenarios.some((scenario) => scenario.name === "軽量ログイン確認"),
+    "Minimal scenario was not saved.",
+  );
+
+  await controlPage.reload({ waitUntil: "domcontentloaded" });
+  await controlPage.waitForFunction(
+    (scenarioName) => document.body.innerText.includes(scenarioName),
+    { timeout: 8_000 },
+    scenarios[0].name,
+  );
+  const popupText = await controlPage.evaluate(() => document.body.innerText);
+  assert(popupText.includes("作る"), "Popup does not expose the recording workflow.");
+  assert(popupText.includes("渡す"), "Popup does not expose the handoff workflow.");
+  assert(popupText.includes("Codex用JSONLをダウンロード"), "Popup does not prioritize JSONL handoff.");
+  assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
+} finally {
+  await browser?.close().catch(() => undefined);
+  fixtureServer.server.close();
+  rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) {
+  await fixturePage.goto(`${fixtureOrigin}/fixture?case=context`, { waitUntil: "domcontentloaded" });
+  await controlPage.reload({ waitUntil: "domcontentloaded" });
+  await setSettings(controlPage, {
+    allowedOrigins: [fixtureOrigin],
+    recordingDetailLevel: "context",
+  });
+  await setPopupInput(controlPage, "scenario-name", "Codex向け予約作成");
+  await fixturePage.bringToFront();
+  await clickPopup(controlPage, "start-recording");
+  await waitForRecorderStatus(controlPage, "recording");
+  await waitForOverlay(fixturePage, "recording");
+  await fixturePage.click("#choose-package");
+  await fixturePage.type("#traveler-name", "Sana Tester");
+  await fixturePage.click("#destination");
+  await fixturePage.keyboard.press("ArrowDown");
+  await fixturePage.keyboard.press("ArrowDown");
+  await fixturePage.keyboard.press("Enter");
+  await clickPopup(controlPage, "pause-recording");
+  await waitForRecorderStatus(controlPage, "paused");
+  await waitForOverlay(fixturePage, "paused");
+  await fixturePage.click("#paused-action");
+  await clickPopup(controlPage, "resume-recording");
+  await waitForRecorderStatus(controlPage, "recording");
+  await waitForOverlay(fixturePage, "recording");
+  await fixturePage.click("#resume-action");
+  await Promise.all([
+    fixturePage.waitForNavigation({ waitUntil: "domcontentloaded" }),
+    fixturePage.click("#submit-booking"),
+  ]);
+  await clickPopup(controlPage, "stop-recording");
+  await waitForRecorderStatus(controlPage, "idle");
+  await clickPopup(controlPage, "save-scenario");
+  await waitForScenarioCount(controlPage, 1);
+
+  const [scenario] = await getScenarios(controlPage);
+  assert(scenario.name === "Codex向け予約作成", "Latest scenario name did not match.");
+  const stepTypes = scenario.steps.map((step) => step.type);
+  for (const type of ["click", "fill", "submit"]) {
+    assert(stepTypes.includes(type), `Context scenario is missing ${type} step.`);
+  }
+  assert(
+    scenario.steps.some((step) => step.target?.context?.length > 0),
+    "Context recording did not keep target context.",
+  );
+  assert(
+    !scenario.steps.some((step) => step.target?.text === "Paused action"),
+    "Paused interaction was recorded.",
+  );
+}
+
+async function runMinimalRecording({ controlPage, fixturePage, fixtureOrigin }) {
+  await fixturePage.goto(`${fixtureOrigin}/fixture?case=minimal`, { waitUntil: "domcontentloaded" });
+  await setSettings(controlPage, {
+    allowedOrigins: [fixtureOrigin],
+    recordingDetailLevel: "minimal",
+  });
+  await fixturePage.bringToFront();
+  await sendExtensionMessage(controlPage, { type: "START_RECORDING" });
+  await waitForRecorderStatus(controlPage, "recording");
+  await waitForOverlay(fixturePage, "recording");
+  await fixturePage.click("#login-email");
+  await fixturePage.type("#login-email", "user@example.com");
+  await fixturePage.click("#login-submit");
+  await waitForSteps(controlPage, (steps) => steps.some((step) => step.type === "fill"));
+  await sendExtensionMessage(controlPage, { type: "STOP_RECORDING" });
+  await sendExtensionMessage(controlPage, {
+    type: "SAVE_SCENARIO",
+    payload: { name: "軽量ログイン確認" },
+  });
+  await waitForScenarioCount(controlPage, 2);
+
+  const [scenario] = await getScenarios(controlPage);
+  assert(scenario.name === "軽量ログイン確認", "Latest minimal scenario name did not match.");
+  assert(
+    scenario.steps.some((step) => step.type === "fill"),
+    "Minimal scenario did not record fill steps.",
+  );
+  assert(
+    scenario.steps.every((step) => !step.target?.context),
+    "Minimal recording unexpectedly kept target context.",
+  );
+}
+
+async function setPopupInput(controlPage, testId, value) {
+  const selector = `[data-testid="${testId}"]`;
+  await controlPage.bringToFront();
+  await controlPage.waitForSelector(selector, { timeout: 8_000 });
+  await controlPage.click(selector, { clickCount: 3 });
+  await controlPage.keyboard.press("Backspace");
+  await controlPage.type(selector, value);
+}
+
+async function clickPopup(controlPage, testId) {
+  await controlPage.waitForFunction((selector) => {
+    const button = document.querySelector(selector);
+    return button instanceof HTMLButtonElement && !button.disabled;
+  }, { timeout: 8_000 }, `[data-testid="${testId}"]`);
+  await controlPage.evaluate((selector) => {
+    const button = document.querySelector(selector);
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`Button was not found: ${selector}`);
+    }
+    button.click();
+  }, `[data-testid="${testId}"]`);
+}
+
+async function waitForRecorderStatus(controlPage, status) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 8_000) {
+    const state = await sendExtensionMessage(controlPage, { type: "GET_RECORDER_STATE" });
+    if (state.status === status) {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error(`Recorder did not reach ${status}.`);
+}
+
+async function waitForOverlay(fixturePage, status) {
+  await fixturePage.waitForFunction(
+    (expectedStatus) =>
+      document.getElementById("scenario-recorder-status-overlay")?.dataset.status === expectedStatus,
+    { timeout: 8_000 },
+    status,
+  );
+}
+
+async function waitForExtensionId(browser) {
+  const target = await browser.waitForTarget(
+    (candidate) =>
+      candidate.type() === "service_worker" &&
+      candidate.url().startsWith("chrome-extension://") &&
+      candidate.url().endsWith("/assets/background.js"),
+    { timeout: 10_000 },
+  );
+  return new URL(target.url()).host;
+}
+
+async function clearExtensionStorage(controlPage) {
+  await controlPage.evaluate(() => new Promise((resolve) => chrome.storage.local.clear(resolve)));
+}
+
+async function setSettings(controlPage, settings) {
+  await sendExtensionMessage(controlPage, {
+    type: "UPDATE_SETTINGS",
+    payload: settings,
+  });
+}
+
+async function getScenarios(controlPage) {
+  const result = await controlPage.evaluate(
+    () => new Promise((resolve) => chrome.storage.local.get("scenarioRecorder.scenarios", resolve)),
+  );
+  return result["scenarioRecorder.scenarios"] ?? [];
+}
+
+async function waitForSteps(controlPage, predicate) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 8_000) {
+    const state = await sendExtensionMessage(controlPage, { type: "GET_RECORDER_STATE" });
+    if (predicate(state.currentSteps)) {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error("Recorded steps did not reach the expected state.");
+}
+
+async function waitForScenarioCount(controlPage, count) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 8_000) {
+    const scenarios = await getScenarios(controlPage);
+    if (scenarios.length >= count) {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error(`Saved scenarios did not reach ${count}.`);
+}
+
+async function sendExtensionMessage(controlPage, message) {
+  return controlPage.evaluate(
+    (runtimeMessage) =>
+      new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(runtimeMessage, (response) => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            reject(new Error(error.message));
+            return;
+          }
+          if (response && typeof response === "object" && "error" in response) {
+            reject(new Error(String(response.error)));
+            return;
+          }
+          resolve(response);
+        });
+      }),
+    message,
+  );
+}
+
+async function startFixtureServer() {
+  const server = createServer((request, response) => {
+    if (request.url?.startsWith("/submitted")) {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end("<!doctype html><title>Submitted</title><h1>Submitted</h1>");
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(fixtureHtml());
+  });
+
+  await new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Fixture server did not expose a TCP port.");
+  }
+  return { server, port: address.port };
+}
+
+function fixtureHtml() {
+  return `<!doctype html>
+    <html lang="ja">
+      <head>
+        <meta charset="utf-8">
+        <title>Scenario Recorder Fixture</title>
+        <style>
+          body { font-family: system-ui, sans-serif; margin: 32px; }
+          main { display: grid; gap: 20px; max-width: 560px; }
+          section { display: grid; gap: 12px; padding: 16px; border: 1px solid #ccd5df; }
+          label { display: grid; gap: 6px; }
+          button, input, select { min-height: 34px; font: inherit; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <section aria-label="booking">
+            <h1>Booking fixture</h1>
+            <button id="choose-package" data-testid="choose-package">Choose family package</button>
+            <label>
+              Traveler name
+              <input id="traveler-name" name="travelerName" placeholder="Traveler name">
+            </label>
+            <label>
+              Destination
+              <select id="destination" name="destination">
+                <option value="tokyo">Tokyo</option>
+                <option value="osaka">Osaka</option>
+                <option value="okinawa">Okinawa</option>
+              </select>
+            </label>
+            <form action="/submitted" method="get">
+              <button id="submit-booking" type="submit">Submit booking</button>
+            </form>
+            <button id="paused-action">Paused action</button>
+            <button id="resume-action">Resume action</button>
+          </section>
+          <section aria-label="login">
+            <h2>Login fixture</h2>
+            <label>
+              Email
+              <input id="login-email" name="email" type="email" placeholder="Email">
+            </label>
+            <button id="login-submit" type="button">Log in</button>
+          </section>
+        </main>
+      </body>
+    </html>`;
+}
+
+function findChrome() {
+  const candidates = [
+    process.env.CHROME_BIN,
+    process.env.GOOGLE_CHROME_BIN,
+    "/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome-for-testing",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const chromePath = isAbsolute(candidate) ? candidate : resolve(candidate);
+    if (existsSync(chromePath)) {
+      return chromePath;
+    }
+  }
+  fail("Chrome for Testing or Chromium was not found for extension E2E test.");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}
