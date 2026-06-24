@@ -1,4 +1,4 @@
-import type { Scenario, ScenarioStep, SelectorCandidate, TargetSnapshot } from "./types";
+import type { Scenario, ScenarioStep, SelectorCandidate, SelectorCandidateType, TargetSnapshot } from "./types";
 
 const MASK_VARIABLES: Record<string, { name: string; secret: boolean }> = {
   "{{PASSWORD}}": { name: "password", secret: true },
@@ -6,6 +6,22 @@ const MASK_VARIABLES: Record<string, { name: string; secret: boolean }> = {
   "{{CREDIT_CARD}}": { name: "creditCard", secret: true }
 };
 
+const SELECTOR_CANDIDATE_TYPES: SelectorCandidateType[] = [
+  "data-testid",
+  "data-test",
+  "data-cy",
+  "aria-label",
+  "role",
+  "label",
+  "name",
+  "id",
+  "placeholder",
+  "text",
+  "css",
+  "xpath"
+];
+
+/* oxlint-disable unicorn/no-thenable -- JSON Schema uses the `then` keyword. */
 export const SCENARIO_JSON_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: "https://s4na.github.io/scenario-recorder/schema/scenario-recorder-v1.json",
@@ -41,12 +57,71 @@ export const SCENARIO_JSON_SCHEMA = {
           timestamp: { type: "number" },
           url: { type: "string" },
           title: { type: "string" },
-          value: {},
+          value: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] },
           fromUrl: { type: "string" },
           toUrl: { type: "string" },
-          target: { type: "object" },
-          assertion: { type: "object" }
+          target: {
+            type: "object",
+            required: ["selectorCandidates", "tagName"],
+            properties: {
+              selectorCandidates: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["type", "value", "confidence"],
+                  properties: {
+                    type: { enum: SELECTOR_CANDIDATE_TYPES },
+                    value: { oneOf: [{ type: "string" }, { type: "object" }] },
+                    confidence: { type: "number" }
+                  },
+                  additionalProperties: true
+                }
+              },
+              tagName: { type: "string" },
+              text: { type: "string" },
+              ariaLabel: { type: "string" },
+              role: { type: "string" },
+              name: { type: "string" },
+              id: { type: "string" },
+              className: { type: "string" },
+              dataTestId: { type: "string" },
+              label: { type: "string" },
+              placeholder: { type: "string" },
+              inputType: { type: "string" },
+              rect: {
+                type: "object",
+                required: ["x", "y", "width", "height"],
+                properties: {
+                  x: { type: "number" },
+                  y: { type: "number" },
+                  width: { type: "number" },
+                  height: { type: "number" }
+                }
+              }
+            },
+            additionalProperties: true
+          },
+          assertion: {
+            type: "object",
+            required: ["kind", "expected"],
+            properties: {
+              kind: { enum: ["url", "title"] },
+              expected: { type: "string" }
+            },
+            additionalProperties: true
+          }
         },
+        allOf: [
+          { if: { properties: { type: { const: "fill" } } }, then: { properties: { value: { type: "string" } } } },
+          {
+            if: { properties: { type: { const: "select" } } },
+            then: { properties: { value: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] } } }
+          },
+          {
+            if: { properties: { type: { enum: ["click", "submit", "navigation", "goto", "wait", "assert"] } } },
+            then: { not: { required: ["value"] } }
+          }
+        ],
         additionalProperties: true
       }
     },
@@ -63,22 +138,39 @@ export const SCENARIO_JSON_SCHEMA = {
   },
   additionalProperties: false
 } as const;
+/* oxlint-enable unicorn/no-thenable */
 
 export function scenarioToJsonl(scenario: Scenario): string {
   return scenario.steps.map((step) => JSON.stringify(step)).join("\n");
 }
 
 export function scenarioToPlaywright(scenario: Scenario): string {
+  const context = createPlaywrightContext(scenario);
   const lines = [
     "import { test, expect } from '@playwright/test';",
-    "",
-    `test(${JSON.stringify(scenario.name)}, async ({ page }) => {`
+    ""
   ];
+  if (context.variableDeclarations.length > 0) {
+    lines.push(
+      "function getRequiredEnv(name: string): string {",
+      "  const value = process.env[name];",
+      "  if (!value) {",
+      "    throw new Error(`Missing required environment variable: ${name}`);",
+      "  }",
+      "  return value;",
+      "}",
+      ""
+    );
+  }
+  lines.push(
+    `test(${JSON.stringify(scenario.name)}, async ({ page }) => {`
+  );
+  lines.push(...context.variableDeclarations.map((declaration) => `  ${declaration}`));
   if (scenario.startUrl) {
     lines.push(`  await page.goto(${JSON.stringify(scenario.startUrl)});`);
   }
-  for (const step of scenario.steps) {
-    lines.push(...stepToPlaywright(step));
+  for (const [index, step] of scenario.steps.entries()) {
+    lines.push(...stepToPlaywright(step, scenario.steps[index - 1], context));
   }
   lines.push("});", "");
   return lines.join("\n");
@@ -116,14 +208,46 @@ export function parseScenarioImport(value: unknown): Scenario[] {
   return [normalizeScenario(value)];
 }
 
-function stepToPlaywright(step: ScenarioStep): string[] {
+type PlaywrightContext = {
+  maskExpressions: Map<string, string>;
+  variableDeclarations: string[];
+};
+
+function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
+  const maskExpressions = new Map<string, string>();
+  const variableDeclarations: string[] = [];
+  for (const [name, variable] of Object.entries(scenario.variables ?? {})) {
+    if (typeof variable.defaultValue !== "string" || !variable.secret) {
+      continue;
+    }
+    if (!(variable.defaultValue in MASK_VARIABLES)) {
+      continue;
+    }
+    const identifier = toIdentifier(name);
+    const envName = toEnvName(name);
+    maskExpressions.set(variable.defaultValue, identifier);
+    variableDeclarations.push(`const ${identifier} = getRequiredEnv(${JSON.stringify(envName)});`);
+  }
+  return { maskExpressions, variableDeclarations };
+}
+
+function stepToPlaywright(step: ScenarioStep, previousStep: ScenarioStep | undefined, context: PlaywrightContext): string[] {
   if (step.type === "navigation") {
     const url = step.toUrl ?? step.url;
-    return [`  await page.waitForURL(${JSON.stringify(url)});`];
+    if (previousStep && isNavigationTrigger(previousStep)) {
+      return [`  await page.waitForURL(${JSON.stringify(url)});`];
+    }
+    return [`  await page.goto(${JSON.stringify(url)});`];
+  }
+  if (step.type === "goto") {
+    return [`  await page.goto(${JSON.stringify(step.toUrl ?? step.url)});`];
+  }
+  if (step.type === "wait") {
+    return ['  await page.waitForLoadState("networkidle");'];
   }
   if (step.type === "assert") {
     if (step.assertion?.kind === "url") {
-      return [`  await expect(page).toHaveURL(${JSON.stringify(step.assertion.expected)});`];
+      return [`  await expect(page).toHaveURL(${urlAssertionExpression(step.assertion.expected)});`];
     }
     if (step.assertion?.kind === "title") {
       return [`  await expect(page).toHaveTitle(${JSON.stringify(step.assertion.expected)});`];
@@ -138,15 +262,80 @@ function stepToPlaywright(step: ScenarioStep): string[] {
     return [`  await ${selector}.click();`];
   }
   if (step.type === "fill") {
-    return [`  await ${selector}.fill(${JSON.stringify(String(step.value ?? ""))});`];
+    return [`  await ${selector}.fill(${valueToPlaywrightExpression(step.value ?? "", context)});`];
   }
   if (step.type === "select") {
-    return [`  await ${selector}.selectOption(${JSON.stringify(step.value ?? "")});`];
+    return [`  await ${selector}.selectOption(${valueToPlaywrightExpression(step.value ?? "", context)});`];
   }
   if (step.type === "submit") {
     return [`  await ${selector}.evaluate((element) => element instanceof HTMLFormElement ? element.requestSubmit() : element.closest('form')?.requestSubmit());`];
   }
   return [`  // Unsupported ${step.type} step`];
+}
+
+function isNavigationTrigger(step: ScenarioStep): boolean {
+  return step.type === "click" || step.type === "submit";
+}
+
+function urlAssertionExpression(expected: string): string {
+  if (!Object.keys(MASK_VARIABLES).some((mask) => expected.includes(mask))) {
+    return JSON.stringify(expected);
+  }
+  let source = escapeRegExp(expected);
+  for (const mask of Object.keys(MASK_VARIABLES)) {
+    source = source.replaceAll(escapeRegExp(mask), "[^/?#&]+");
+  }
+  return `new RegExp(${JSON.stringify(`^${source}$`)})`;
+}
+
+function valueToPlaywrightExpression(value: string | string[], context: PlaywrightContext): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stringToPlaywrightExpression(item, context)).join(", ")}]`;
+  }
+  return stringToPlaywrightExpression(value, context);
+}
+
+function stringToPlaywrightExpression(value: string, context: PlaywrightContext): string {
+  const exactExpression = context.maskExpressions.get(value);
+  if (exactExpression) {
+    return exactExpression;
+  }
+  if (![...context.maskExpressions.keys()].some((mask) => value.includes(mask))) {
+    return JSON.stringify(value);
+  }
+  const parts: string[] = [];
+  let rest = value;
+  while (rest.length > 0) {
+    const nextMask = [...context.maskExpressions.keys()]
+      .map((mask) => ({ mask, index: rest.indexOf(mask) }))
+      .filter((item) => item.index >= 0)
+      .sort((first, second) => first.index - second.index)[0];
+    if (!nextMask) {
+      parts.push(escapeTemplateLiteral(rest));
+      break;
+    }
+    parts.push(escapeTemplateLiteral(rest.slice(0, nextMask.index)));
+    parts.push(`\${${context.maskExpressions.get(nextMask.mask)}}`);
+    rest = rest.slice(nextMask.index + nextMask.mask.length);
+  }
+  return `\`${parts.join("")}\``;
+}
+
+function toIdentifier(name: string): string {
+  const identifier = name.replace(/[^A-Za-z0-9_$]/g, "_").replace(/^[^A-Za-z_$]/, "_");
+  return identifier || "secretValue";
+}
+
+function toEnvName(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/[^A-Za-z0-9]+/g, "_").toUpperCase();
+}
+
+function escapeTemplateLiteral(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function targetToLocator(target: TargetSnapshot | undefined): string | undefined {
@@ -271,7 +460,7 @@ function isScenarioStep(value: unknown): value is ScenarioStep {
     isScenarioStepType(step.type) &&
     typeof step.timestamp === "number" &&
     typeof step.url === "string" &&
-    isValidStepValue(step.value) &&
+    isValidStepValueForType(step.type, step.value) &&
     (step.assertion === undefined || isStepAssertion(step.assertion)) &&
     (step.target === undefined || isTargetSnapshot(step.target))
   );
@@ -290,12 +479,14 @@ function isScenarioStepType(value: unknown): value is ScenarioStep["type"] {
   );
 }
 
-function isValidStepValue(value: unknown): boolean {
-  return (
-    value === undefined ||
-    typeof value === "string" ||
-    (Array.isArray(value) && value.every((item) => typeof item === "string"))
-  );
+function isValidStepValueForType(type: ScenarioStep["type"], value: unknown): boolean {
+  if (type === "fill") {
+    return typeof value === "string";
+  }
+  if (type === "select") {
+    return typeof value === "string" || (Array.isArray(value) && value.every((item) => typeof item === "string"));
+  }
+  return value === undefined;
 }
 
 function isStepAssertion(value: unknown): value is NonNullable<ScenarioStep["assertion"]> {
@@ -326,12 +517,17 @@ function isSelectorCandidate(value: unknown): value is SelectorCandidate {
     return false;
   }
   const candidate = value as Partial<SelectorCandidate>;
-  return (
-    typeof candidate.type === "string" &&
-    (typeof candidate.value === "string" ||
-      (typeof candidate.value === "object" && candidate.value !== null)) &&
-    typeof candidate.confidence === "number"
-  );
+  if (!isSelectorCandidateType(candidate.type) || typeof candidate.confidence !== "number") {
+    return false;
+  }
+  if (candidate.type === "role") {
+    return candidate.value !== undefined && isRoleValue(candidate.value);
+  }
+  return typeof candidate.value === "string";
+}
+
+function isSelectorCandidateType(value: unknown): value is SelectorCandidateType {
+  return typeof value === "string" && SELECTOR_CANDIDATE_TYPES.includes(value as SelectorCandidateType);
 }
 
 function isRecording(value: unknown): value is Scenario["recording"] {

@@ -19,13 +19,13 @@ vi.stubGlobal("chrome", {
   }
 });
 
-function scenario(id: string, name: string): Scenario {
+function scenario(id: string, name: string, updatedAt = "2026-06-23T10:00:00.000Z"): Scenario {
   return {
     schemaVersion: "scenario-recorder/v1",
     id,
     name,
     createdAt: "2026-06-23T10:00:00.000Z",
-    updatedAt: "2026-06-23T10:00:00.000Z",
+    updatedAt,
     recording: { sessions: [] },
     steps: [],
     metadata: {
@@ -39,17 +39,22 @@ function scenario(id: string, name: string): Scenario {
 describe("storage", () => {
   it("deduplicates imported scenarios by id before saving", async () => {
     storage.clear();
-    storage.set(STORAGE_KEYS.SCENARIOS, [scenario("existing", "existing")]);
+    storage.set(STORAGE_KEYS.SCENARIOS, [
+      scenario("existing", "existing", "2026-06-24T10:00:00.000Z"),
+      scenario("replace", "old local", "2026-06-23T10:00:00.000Z")
+    ]);
 
     const scenarios = await importScenarios([
-      scenario("existing", "imported existing"),
-      scenario("duplicate", "first"),
-      scenario("duplicate", "last")
+      scenario("existing", "older import", "2026-06-23T10:00:00.000Z"),
+      scenario("replace", "new import", "2026-06-24T10:00:00.000Z"),
+      scenario("duplicate", "first", "2026-06-23T10:00:00.000Z"),
+      scenario("duplicate", "last", "2026-06-23T10:00:00.000Z")
     ]);
 
     const expectedScenarios = [
-      ["existing", "imported existing"],
+      ["replace", "new import"],
       ["duplicate", "last"],
+      ["existing", "existing"]
     ];
 
     expect(scenarios.map((item) => [item.id, item.name])).toEqual(expectedScenarios);

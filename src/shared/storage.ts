@@ -65,11 +65,26 @@ export async function getScenario(scenarioId: string): Promise<Scenario | undefi
 
 export async function importScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
   const current = await getScenarios();
-  const importedById = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
-  const imported = Array.from(importedById.values());
-  const next = [...imported, ...current.filter((scenario) => !importedById.has(scenario.id))];
+  const currentById = new Map(current.map((scenario) => [scenario.id, scenario]));
+  const importedById = new Map<string, Scenario>();
+  for (const scenario of scenarios) {
+    const existing = importedById.get(scenario.id);
+    if (!existing || isSameOrNewerScenario(scenario, existing)) {
+      importedById.set(scenario.id, scenario);
+    }
+  }
+  const imported = Array.from(importedById.values()).filter((scenario) => {
+    const existing = currentById.get(scenario.id);
+    return !existing || isSameOrNewerScenario(scenario, existing);
+  });
+  const importedIds = new Set(imported.map((scenario) => scenario.id));
+  const next = [...imported, ...current.filter((scenario) => !importedIds.has(scenario.id))];
   await getChromeStorage().set({ [STORAGE_KEYS.SCENARIOS]: next });
   return next;
+}
+
+function isSameOrNewerScenario(candidate: Scenario, current: Scenario): boolean {
+  return Date.parse(candidate.updatedAt) >= Date.parse(current.updatedAt);
 }
 
 export async function getSettings(): Promise<ScenarioRecorderSettings> {

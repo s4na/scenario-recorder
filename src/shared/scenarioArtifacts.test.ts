@@ -10,7 +10,18 @@ const scenario: Scenario = {
   updatedAt: "2026-06-23T10:00:00.000Z",
   startUrl: "https://example.com/login",
   baseUrl: "https://example.com",
-  variables: {},
+  variables: {
+    password: {
+      type: "string",
+      defaultValue: "{{PASSWORD}}",
+      secret: true
+    },
+    secret: {
+      type: "string",
+      defaultValue: "{{SECRET}}",
+      secret: true
+    }
+  },
   recording: { sessions: [] },
   steps: [
     {
@@ -135,6 +146,12 @@ const scenario: Scenario = {
       }
     },
     {
+      id: "step_13",
+      type: "wait",
+      timestamp: 13,
+      url: "https://example.com/unsupported"
+    },
+    {
       id: "step_14",
       type: "click",
       timestamp: 14,
@@ -206,18 +223,28 @@ describe("scenario artifacts", () => {
       steps: [
         ...scenario.steps,
         {
-          id: "step_13",
+          id: "step_18",
           type: "assert",
-          timestamp: 13,
+          timestamp: 18,
           url: "https://example.com/unsupported",
           assertion: { kind: "text", expected: "Saved" } as never
+        },
+        {
+          id: "step_19",
+          type: "assert",
+          timestamp: 19,
+          url: "https://example.com/callback?code={{SECRET}}",
+          assertion: { kind: "url", expected: "https://example.com/callback?code={{SECRET}}" }
         }
       ]
     });
 
+    expect(code).toContain("function getRequiredEnv(name: string): string");
+    expect(code).toContain("  const password = getRequiredEnv(\"PASSWORD\");");
+    expect(code).toContain("  const secret = getRequiredEnv(\"SECRET\");");
     expect(code).toContain("  await page.goto(\"https://example.com/login\");");
     expect(code).toContain("  await page.getByRole(\"button\", { name: \"Sign in\" }).click();");
-    expect(code).toContain("  await page.getByLabel(\"Password\").fill(\"{{PASSWORD}}\");");
+    expect(code).toContain("  await page.getByLabel(\"Password\").fill(password);");
     expect(code).toContain("  await page.locator(\"select[name=\\\"role\\\"]\").selectOption(\"admin\");");
     expect(code).toContain("  await page.locator(\"form#settings\").evaluate");
     expect(code).toContain("  await page.waitForURL(\"https://example.com/done\");");
@@ -227,13 +254,15 @@ describe("scenario artifacts", () => {
     expect(code).toContain("  await page.getByPlaceholder(\"Search\").fill(\"search\");");
     expect(code).toContain("  await page.getByText(\"Details\").click();");
     expect(code).toContain("  await page.getByTestId(\"confirm-button\").click();");
-    expect(code).toContain("  await page.locator(\"[name=\\\"secretChoice\\\"]\").selectOption([\"{{SECRET}}\"]);");
-    expect(code).toContain("Unsupported goto step");
+    expect(code).toContain("  await page.locator(\"[name=\\\"secretChoice\\\"]\").selectOption([secret]);");
+    expect(code).toContain("  await page.goto(\"https://example.com/unsupported\");");
+    expect(code).toContain("  await page.waitForLoadState(\"networkidle\");");
+    expect(code).toContain("  await expect(page).toHaveURL(new RegExp(\"^https://example\\\\.com/callback\\\\?code=[^/?#&]+$\"));");
     expect(code).toContain("Unsupported assertion step");
     const orderedFragments = [
       "  await page.goto(\"https://example.com/login\");",
       "  await page.getByRole(\"button\", { name: \"Sign in\" }).click();",
-      "  await page.getByLabel(\"Password\").fill(\"{{PASSWORD}}\");",
+      "  await page.getByLabel(\"Password\").fill(password);",
       "  await expect(page).toHaveURL(\"https://example.com/dashboard\");",
       "  await page.locator(\"select[name=\\\"role\\\"]\").selectOption(\"admin\");",
       "  await page.locator(\"form#settings\").evaluate",
@@ -243,13 +272,15 @@ describe("scenario artifacts", () => {
       "  await page.getByPlaceholder(\"Search\").fill(\"search\");",
       "  await page.getByText(\"Details\").click();",
       "  await page.getByTestId(\"confirm-button\").click();",
-      "  await page.locator(\"[name=\\\"secretChoice\\\"]\").selectOption([\"{{SECRET}}\"]);",
-      "Unsupported goto step",
+      "  await page.locator(\"[name=\\\"secretChoice\\\"]\").selectOption([secret]);",
+      "  await page.goto(\"https://example.com/unsupported\");",
+      "  await page.waitForLoadState(\"networkidle\");",
       "  await page.locator(\"[id=\\\"save-button\\\"]\").click();",
       "  await page.locator(\"[data-cy=\\\"confirm-action\\\"]\").click();",
       "  await page.getByLabel(\"Close\").click();",
       "  await page.locator(\"[data-test=\\\"delete-action\\\"]\").click();",
-      "Unsupported assertion step"
+      "Unsupported assertion step",
+      "  await expect(page).toHaveURL(new RegExp(\"^https://example\\\\.com/callback\\\\?code=[^/?#&]+$\"));"
     ];
     expect(orderedFragments.map((fragment) => code.indexOf(fragment))).toEqual(
       orderedFragments.map(() => expect.any(Number))
@@ -408,6 +439,24 @@ describe("scenario artifacts", () => {
       parseScenarioImport({
         ...scenario,
         variables: []
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
+        steps: [{ ...scenario.steps[1], value: ["a", "b"] }]
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
+        steps: [{
+          ...scenario.steps[0],
+          target: {
+            tagName: "button",
+            selectorCandidates: [{ type: "unknown", value: "x", confidence: 1 }]
+          }
+        }]
       })
     ).toThrow("scenario-recorder/v1");
   });

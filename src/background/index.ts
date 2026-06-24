@@ -239,10 +239,13 @@ async function recordTabNavigation(
   if (
     state.status !== "recording" ||
     state.targetTabId !== tabId ||
-    timestamp < getActiveSessionStartedAtMs(state) ||
-    !isAllowedBySettings(sanitizedToUrl, settings)
+    timestamp < getActiveSessionStartedAtMs(state)
   ) {
     await setTabUrl(tabId, sanitizedToUrl);
+    return;
+  }
+  if (!isAllowedBySettings(sanitizedToUrl, settings)) {
+    await deleteTabUrl(tabId);
     return;
   }
   await recordStep({
@@ -439,7 +442,6 @@ async function importStoredScenarios(
     scenarios: await importScenarios(
       scenarios.map((scenario) => ({
         ...withDerivedSecretVariables(scenario),
-        updatedAt: toIsoNow(),
       })),
     ),
   }));
@@ -551,13 +553,16 @@ function normalizeOrigin(value: string): string {
   }
 }
 
-async function isRecordingTarget(tabId: number | undefined): Promise<{ recording: boolean }> {
+async function isRecordingTarget(tab: chrome.tabs.Tab | undefined): Promise<{ recording: boolean }> {
+  const tabId = tab?.id;
   if (tabId === undefined) {
     return { recording: false };
   }
   const state = await getRecorderState();
+  const settings = await getSettings();
+  const url = tab?.url ?? tabUrls.get(tabId);
   return {
-    recording: state.status === "recording" && state.targetTabId === tabId,
+    recording: state.status === "recording" && state.targetTabId === tabId && isAllowedBySettings(url, settings),
   };
 }
 
@@ -592,7 +597,7 @@ async function handleMessage(
     case "GET_RECORDER_STATE":
       return getCurrentRecorderState();
     case "IS_RECORDING_TARGET":
-      return isRecordingTarget(sender?.tab?.id);
+      return isRecordingTarget(sender?.tab);
     case "RECORDED_STEP":
       return recordStep(message.payload.step, sender?.tab?.id);
     case "SAVE_SCENARIO":
