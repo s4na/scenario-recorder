@@ -1,14 +1,19 @@
-import type { RecorderState, Scenario } from "./types";
+import type { RecorderState, Scenario, ScenarioRecorderSettings } from "./types";
 
 export const STORAGE_KEYS = {
   RECORDER_STATE: "scenarioRecorder.recorderState",
-  SCENARIOS: "scenarioRecorder.scenarios"
+  SCENARIOS: "scenarioRecorder.scenarios",
+  SETTINGS: "scenarioRecorder.settings"
 } as const;
 
 const DEFAULT_RECORDER_STATE: RecorderState = {
   status: "idle",
   currentSteps: [],
   recordingSessions: []
+};
+
+const DEFAULT_SETTINGS: ScenarioRecorderSettings = {
+  allowedOrigins: []
 };
 
 function getChromeStorage(): chrome.storage.StorageArea {
@@ -56,4 +61,44 @@ export async function deleteScenario(scenarioId: string): Promise<void> {
 export async function getScenario(scenarioId: string): Promise<Scenario | undefined> {
   const scenarios = await getScenarios();
   return scenarios.find((scenario) => scenario.id === scenarioId);
+}
+
+export async function importScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
+  const current = await getScenarios();
+  const currentById = new Map(current.map((scenario) => [scenario.id, scenario]));
+  const importedById = new Map<string, Scenario>();
+  for (const scenario of scenarios) {
+    const existing = importedById.get(scenario.id);
+    if (!existing || isSameOrNewerScenario(scenario, existing)) {
+      importedById.set(scenario.id, scenario);
+    }
+  }
+  const imported = Array.from(importedById.values()).filter((scenario) => {
+    const existing = currentById.get(scenario.id);
+    return !existing || isNewerScenario(scenario, existing);
+  });
+  const importedIds = new Set(imported.map((scenario) => scenario.id));
+  const next = [...imported, ...current.filter((scenario) => !importedIds.has(scenario.id))];
+  await getChromeStorage().set({ [STORAGE_KEYS.SCENARIOS]: next });
+  return next;
+}
+
+function isSameOrNewerScenario(candidate: Scenario, current: Scenario): boolean {
+  return Date.parse(candidate.updatedAt) >= Date.parse(current.updatedAt);
+}
+
+function isNewerScenario(candidate: Scenario, current: Scenario): boolean {
+  return Date.parse(candidate.updatedAt) > Date.parse(current.updatedAt);
+}
+
+export async function getSettings(): Promise<ScenarioRecorderSettings> {
+  const result = await getChromeStorage().get(STORAGE_KEYS.SETTINGS);
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(result[STORAGE_KEYS.SETTINGS] as ScenarioRecorderSettings | undefined)
+  };
+}
+
+export async function setSettings(settings: ScenarioRecorderSettings): Promise<void> {
+  await getChromeStorage().set({ [STORAGE_KEYS.SETTINGS]: settings });
 }

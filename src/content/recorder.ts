@@ -4,6 +4,8 @@ import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
 import { sanitizeUrl } from "./urlSanitizer";
 
+type RecorderStepType = Exclude<ScenarioStep["type"], "assert">;
+type RecorderStep = Extract<ScenarioStep, { type: RecorderStepType }>;
 type StepHandler = (step: ScenarioStep) => void | Promise<void>;
 type FlushOptions = {
   throwOnError?: boolean;
@@ -103,9 +105,9 @@ function createStepContext(): StepContext {
 }
 
 function createBaseStep(
-  type: ScenarioStep["type"],
+  type: RecorderStepType,
   context = createStepContext(),
-): Omit<ScenarioStep, "id"> {
+): Omit<RecorderStep, "id"> {
   return {
     type,
     timestamp: Date.now(),

@@ -17,7 +17,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -129,7 +130,8 @@ h2 {
   font-weight: 700;
 }
 
-.field input {
+.field input,
+.field textarea {
   width: 100%;
   padding: 9px 10px;
   border: 1px solid #c8d0da;
@@ -138,7 +140,13 @@ h2 {
   background: #ffffff;
 }
 
-.field input:focus {
+.field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
 }
@@ -172,6 +180,13 @@ button {
 button:hover:not(:disabled) {
   border-color: #64748b;
   background: #eef2f7;
+}
+
+button:focus-visible,
+.editFields input:focus-visible,
+.editFields textarea:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
 }
 
 button:disabled {
@@ -236,5 +251,29 @@ button.danger {
 }
 
 .scenarioActions {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.editFields {
+  display: grid;
+  gap: 6px;
+}
+
+.editFields input,
+.editFields textarea {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid #c8d0da;
+  border-radius: 6px;
+  color: #17202a;
+  background: #ffffff;
+}
+
+.editFields textarea {
+  min-height: 58px;
+  resize: vertical;
 }
