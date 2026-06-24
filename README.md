@@ -15,7 +15,7 @@ Webアプリ上のユーザー操作をChrome拡張で記録し、CodexやPlaywr
 - Playwrightテストコード生成
 - シナリオJSON/JSONLのインポート
 - 保存済みシナリオの名前、説明、タグ編集
-- JSON Schemaのダウンロード
+- 互換JSON Schemaのダウンロード
 - 対象ドメイン設定
 - 記録詳細度設定（minimal/context）
 - 現在URL、タイトルのassertion追加
@@ -87,6 +87,7 @@ GitHubが自動生成する「Source code」zipは開発用ソースです。Chr
 ## 互換JSON形式
 
 UI内部と互換エクスポート用のシナリオJSONは `scenario-recorder/v1` です。
+popupの「互換JSON Schemaをダウンロード」では、このJSON形式のschemaを保存できます。
 
 ```json
 {

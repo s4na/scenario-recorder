@@ -5,6 +5,11 @@ const MASK_VARIABLES: Record<string, { name: string; secret: boolean }> = {
   "{{SECRET}}": { name: "secret", secret: true },
   "{{CREDIT_CARD}}": { name: "creditCard", secret: true }
 };
+const MASK_ENV_NAMES: Record<string, string> = {
+  "{{PASSWORD}}": "SCENARIO_RECORDER_PASSWORD",
+  "{{SECRET}}": "SCENARIO_RECORDER_SECRET",
+  "{{CREDIT_CARD}}": "SCENARIO_RECORDER_CREDIT_CARD"
+};
 const MASK_TOKENS = Object.keys(MASK_VARIABLES);
 const MASK_PATTERNS = MASK_TOKENS.flatMap((mask) => [mask, encodeURIComponent(mask)]);
 const RESERVED_IDENTIFIERS = new Set([
@@ -304,15 +309,15 @@ function scenarioToJsonlLines(scenario: Scenario): ScenarioJsonlLine[] {
       metadata: scenario.metadata,
     },
     ...scenario.recording.sessions.map((session, index) => ({
+      ...session,
       kind: "session" as const,
       index,
-      ...session,
     })),
     ...scenario.steps.map((step, index): ScenarioJsonlLine => {
       if (step.type === "assert") {
-        return { kind: "assertion", index, ...step };
+        return { ...step, kind: "assertion", index };
       }
-      return { kind: "step", index, ...step };
+      return { ...step, kind: "step", index };
     }),
   ];
 }
@@ -471,16 +476,15 @@ function createPlaywrightContext(scenario: Scenario, allowedOrigins: string[]): 
   const secretExpressions = new Set<string>();
   const variableDeclarations: string[] = [];
   const usedIdentifiers = new Set<string>();
-  const usedEnvNames = new Set<string>();
   for (const [name, variable] of Object.entries(scenario.variables ?? {})) {
     if (typeof variable.defaultValue !== "string" || !variable.secret) {
       continue;
     }
-    if (!(variable.defaultValue in MASK_VARIABLES)) {
+    const envName = MASK_ENV_NAMES[variable.defaultValue];
+    if (!envName || maskExpressions.has(variable.defaultValue)) {
       continue;
     }
     const identifier = toUniqueIdentifier(name, usedIdentifiers);
-    const envName = toUniqueEnvName(name, usedEnvNames);
     maskExpressions.set(variable.defaultValue, identifier);
     secretExpressions.add(identifier);
     variableDeclarations.push(`const ${identifier} = getRequiredEnv(${JSON.stringify(envName)});`);
@@ -640,22 +644,6 @@ function toUniqueIdentifier(name: string, usedIdentifiers: Set<string>): string 
     suffix += 1;
   }
   usedIdentifiers.add(candidate);
-  return candidate;
-}
-
-function toEnvName(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/[^A-Za-z0-9]+/g, "_").toUpperCase();
-}
-
-function toUniqueEnvName(name: string, usedEnvNames: Set<string>): string {
-  const base = toEnvName(name) || "SECRET_VALUE";
-  let candidate = base;
-  let suffix = 2;
-  while (usedEnvNames.has(candidate)) {
-    candidate = `${base}_${suffix}`;
-    suffix += 1;
-  }
-  usedEnvNames.add(candidate);
   return candidate;
 }
 

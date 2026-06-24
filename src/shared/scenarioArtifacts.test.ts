@@ -231,6 +231,27 @@ describe("scenario artifacts", () => {
     );
   });
 
+  it("keeps JSONL envelope fields authoritative over imported extra fields", () => {
+    const lines = scenarioToJsonl({
+      ...scenario,
+      recording: {
+        sessions: [{
+          startedAt: "2026-06-23T10:00:00.000Z",
+          kind: "step",
+          index: 99,
+        } as never],
+      },
+      steps: [{
+        ...scenario.steps[0],
+        kind: "assertion",
+        index: 42,
+      } as never],
+    }).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(lines[1]).toMatchObject({ kind: "session", index: 0 });
+    expect(lines[2]).toMatchObject({ kind: "step", index: 0, id: "step_0", type: "click" });
+  });
+
   it("imports JSONL scenarios back into scenario objects", () => {
     expect(parseScenarioImportText(scenarioToJsonl(scenario))).toEqual([{
       ...scenario,
@@ -336,8 +357,8 @@ describe("scenario artifacts", () => {
 
     expect(code).toContain("function getRequiredEnv(name: string): string");
     expect(code).toContain("async function assertAllowedOrigin(page: import('@playwright/test').Page): Promise<void>");
-    expect(code).toContain("  const password = getRequiredEnv(\"PASSWORD\");");
-    expect(code).toContain("  const secret = getRequiredEnv(\"SECRET\");");
+    expect(code).toContain("  const password = getRequiredEnv(\"SCENARIO_RECORDER_PASSWORD\");");
+    expect(code).toContain("  const secret = getRequiredEnv(\"SCENARIO_RECORDER_SECRET\");");
     expect(code).toContain("  await page.goto(\"https://example.com/login\");");
     expect(code).toContain("  await page.getByRole(\"button\", { name: \"Sign in\" }).click();");
     expect(code).toContain("  await assertAllowedOrigin(page);\n  await page.getByLabel(\"Password\").fill(password);");
@@ -405,7 +426,7 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
         }
       }]
-    }, { allowedOrigins: ["https://example.com"] })).toContain("  const classValue = getRequiredEnv(\"CLASS\");");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  const classValue = getRequiredEnv(\"SCENARIO_RECORDER_PASSWORD\");");
     expect(scenarioToPlaywright({
       ...scenario,
       variables: {
@@ -424,7 +445,7 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "id", value: "user.email", confidence: 90 }]
         }
       }]
-    }, { allowedOrigins: ["https://example.com"] })).toContain("  const secret_value_2 = getRequiredEnv(\"SECRET_VALUE_2\");");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  const secret_value_2 = getRequiredEnv(\"SCENARIO_RECORDER_CREDIT_CARD\");");
     expect(scenarioToPlaywright({
       ...scenario,
       variables: {
@@ -460,7 +481,26 @@ describe("scenario artifacts", () => {
           selectorCandidates: [{ type: "label", value: "Password", confidence: 90 }]
         }
       }]
-    }, { allowedOrigins: ["https://example.com"] })).toContain("  const letValue = getRequiredEnv(\"LET\");");
+    }, { allowedOrigins: ["https://example.com"] })).toContain("  const letValue = getRequiredEnv(\"SCENARIO_RECORDER_PASSWORD\");");
+    const importedSecretNameCode = scenarioToPlaywright({
+      ...scenario,
+      variables: {
+        AWS_SECRET_ACCESS_KEY: { type: "string", defaultValue: "{{SECRET}}", secret: true }
+      },
+      steps: [{
+        id: "imported_secret_name",
+        type: "fill",
+        timestamp: 0,
+        url: "https://example.com",
+        value: "{{SECRET}}",
+        target: {
+          tagName: "input",
+          selectorCandidates: [{ type: "label", value: "API token", confidence: 90 }]
+        }
+      }]
+    }, { allowedOrigins: ["https://example.com"] });
+    expect(importedSecretNameCode).toContain("getRequiredEnv(\"SCENARIO_RECORDER_SECRET\")");
+    expect(importedSecretNameCode).not.toContain("getRequiredEnv(\"AWS_SECRET_ACCESS_KEY\")");
   });
 
   it("generates regexp URL assertions for encoded secret masks", () => {

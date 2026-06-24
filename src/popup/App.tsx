@@ -278,7 +278,7 @@ export default function App() {
               downloadJson("scenario-recorder.schema.json", SCENARIO_JSON_SCHEMA)
             }
           >
-            JSON Schemaをダウンロード
+            互換JSON Schemaをダウンロード
           </button>
           <input
             ref={importInputRef}
