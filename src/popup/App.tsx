@@ -452,7 +452,7 @@ export default function App() {
                 setSettings(nextSettings);
                 setAllowedOriginsText(nextSettings.allowedOrigins.join("\n"));
                 setIsEditingAllowedOrigins(false);
-              }, "対象ドメインを保存しました")
+              }, "対象 originを保存しました")
             }
           >
               対象 originを保存
