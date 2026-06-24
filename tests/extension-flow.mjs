@@ -215,15 +215,6 @@ async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureO
   );
 }
 
-async function setPopupInput(controlPage, testId, value) {
-  const selector = `[data-testid="${testId}"]`;
-  await controlPage.bringToFront();
-  await controlPage.waitForSelector(selector, { timeout: 8_000 });
-  await controlPage.click(selector, { clickCount: 3 });
-  await controlPage.keyboard.press("Backspace");
-  await controlPage.type(selector, value);
-}
-
 async function clickPopup(controlPage, testId) {
   await controlPage.waitForFunction((selector) => {
     const button = document.querySelector(selector);
