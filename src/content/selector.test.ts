@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTargetSnapshot } from "./selector";
 
 describe("createTargetSnapshot", () => {
+  beforeEach(() => {
+    vi.stubGlobal("CSS", {
+      escape: (value: string) => value.replaceAll("\"", "\\\""),
+    });
+  });
+
   afterEach(() => {
+    vi.unstubAllGlobals();
     document.body.replaceChildren();
   });
 
@@ -65,5 +72,32 @@ describe("createTargetSnapshot", () => {
       ]),
     );
     expect(snapshot.context?.map((item) => item.text).join(" ")).not.toContain("yamada@example.com");
+  });
+
+  it("redacts sensitive values from all context string fields", () => {
+    document.body.innerHTML = `
+      <section
+        id="customer-yamada@example.com"
+        class="customer 090-1234-5678"
+        aria-label="Customer yamada@example.com"
+        data-testid="customer-123456789012345678901234"
+      >
+        <label for="customer-code">Code 123456</label>
+        <input id="customer-code">
+      </section>
+    `;
+
+    const input = document.querySelector("input");
+    expect(input).not.toBeNull();
+
+    const snapshot = createTargetSnapshot(input as HTMLInputElement, { includeContext: true });
+    const serializedContext = JSON.stringify(snapshot.context);
+
+    expect(serializedContext).toContain("{{EMAIL}}");
+    expect(serializedContext).toContain("{{PHONE_OR_ID}}");
+    expect(serializedContext).toContain("{{SECRET}}");
+    expect(serializedContext).not.toContain("yamada@example.com");
+    expect(serializedContext).not.toContain("090-1234-5678");
+    expect(serializedContext).not.toContain("123456789012345678901234");
   });
 });
