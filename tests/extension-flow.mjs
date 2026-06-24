@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -14,6 +14,7 @@ if (!existsSync(extensionDir)) {
 const fixtureServer = await startFixtureServer();
 const fixtureOrigin = `http://127.0.0.1:${fixtureServer.port}`;
 const userDataDir = mkdtempSync(`${tmpdir()}/scenario-recorder-e2e-`);
+const downloadDir = mkdtempSync(`${tmpdir()}/scenario-recorder-downloads-`);
 let browser;
 
 try {
@@ -31,6 +32,11 @@ try {
       "--no-default-browser-check",
       "--window-size=1280,900",
     ],
+  });
+  const browserClient = await browser.target().createCDPSession();
+  await browserClient.send("Browser.setDownloadBehavior", {
+    behavior: "allow",
+    downloadPath: downloadDir,
   });
 
   const fixturePage = await browser.newPage();
@@ -65,10 +71,20 @@ try {
   assert(popupText.includes("渡す"), "Popup does not expose the handoff workflow.");
   assert(popupText.includes("Codex用JSONLをダウンロード"), "Popup does not prioritize JSONL handoff.");
   assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
+  await clickPopupButtonWithText(controlPage, "Codex用JSONLをダウンロード");
+  const latestJsonl = await waitForDownloadedFile(".jsonl");
+  const latestJsonlLines = parseJsonl(readFileSync(latestJsonl, "utf8"));
+  assert(latestJsonlLines[0]?.kind === "meta", "Downloaded JSONL does not start with metadata.");
+  assert(latestJsonlLines[0]?.name === scenarios[0].name, "Downloaded JSONL does not use the latest scenario.");
+  assert(
+    latestJsonlLines.some((line) => line.kind === "step" && line.type === "fill" && line.value === "user@example.com"),
+    "Downloaded JSONL does not include the recorded fill step.",
+  );
 } finally {
   await browser?.close().catch(() => undefined);
   fixtureServer.server.close();
   rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  rmSync(downloadDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) {
@@ -76,8 +92,12 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await controlPage.reload({ waitUntil: "domcontentloaded" });
   await setSettings(controlPage, {
     allowedOrigins: [fixtureOrigin],
-    recordingDetailLevel: "context",
+    recordingDetailLevel: "minimal",
   });
+  await controlPage.reload({ waitUntil: "domcontentloaded" });
+  await clickPopup(controlPage, "mode-context");
+  await waitForAriaPressed(controlPage, "mode-context", true);
+  await waitForAriaPressed(controlPage, "mode-minimal", false);
   await fixturePage.bringToFront();
   await clickPopup(controlPage, "start-recording");
   await waitForRecorderStatus(controlPage, "recording");
@@ -110,9 +130,27 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   const [scenario] = await getScenarios(controlPage);
   assert(scenario.name === "Codex向け予約作成", "Latest scenario name did not match.");
   const stepTypes = scenario.steps.map((step) => step.type);
-  for (const type of ["click", "fill", "submit"]) {
+  for (const type of ["click", "fill", "select", "submit"]) {
     assert(stepTypes.includes(type), `Context scenario is missing ${type} step.`);
   }
+  assert(
+    scenario.steps.some(
+      (step) =>
+        step.type === "fill" &&
+        step.value === "Sana Tester" &&
+        targetMatches(step.target, { id: "traveler-name", name: "travelerName", label: "Traveler name" }),
+    ),
+    "Context scenario did not keep the traveler name fill target and value.",
+  );
+  assert(
+    scenario.steps.some(
+      (step) =>
+        step.type === "select" &&
+        step.value === "okinawa" &&
+        targetMatches(step.target, { id: "destination", name: "destination", label: "Destination" }),
+    ),
+    "Context scenario did not keep the destination select target and value.",
+  );
   assert(
     scenario.steps.some((step) => step.target?.context?.length > 0),
     "Context recording did not keep target context.",
@@ -127,8 +165,12 @@ async function runMinimalRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await fixturePage.goto(`${fixtureOrigin}/fixture?case=minimal`, { waitUntil: "domcontentloaded" });
   await setSettings(controlPage, {
     allowedOrigins: [fixtureOrigin],
-    recordingDetailLevel: "minimal",
+    recordingDetailLevel: "context",
   });
+  await controlPage.reload({ waitUntil: "domcontentloaded" });
+  await clickPopup(controlPage, "mode-minimal");
+  await waitForAriaPressed(controlPage, "mode-minimal", true);
+  await waitForAriaPressed(controlPage, "mode-context", false);
   await fixturePage.bringToFront();
   await sendExtensionMessage(controlPage, { type: "START_RECORDING" });
   await waitForRecorderStatus(controlPage, "recording");
@@ -147,8 +189,13 @@ async function runMinimalRecording({ controlPage, fixturePage, fixtureOrigin }) 
   const [scenario] = await getScenarios(controlPage);
   assert(scenario.name === "軽量ログイン確認", "Latest minimal scenario name did not match.");
   assert(
-    scenario.steps.some((step) => step.type === "fill"),
-    "Minimal scenario did not record fill steps.",
+    scenario.steps.some(
+      (step) =>
+        step.type === "fill" &&
+        step.value === "user@example.com" &&
+        targetMatches(step.target, { id: "login-email", name: "email", label: "Email" }),
+    ),
+    "Minimal scenario did not record the email fill target and value.",
   );
   assert(
     scenario.steps.every((step) => !step.target?.context),
@@ -177,6 +224,31 @@ async function clickPopup(controlPage, testId) {
     }
     button.click();
   }, `[data-testid="${testId}"]`);
+}
+
+async function clickPopupButtonWithText(controlPage, text) {
+  await controlPage.bringToFront();
+  await controlPage.waitForFunction((buttonText) => {
+    const buttons = Array.from(document.querySelectorAll("button"));
+    return buttons.some((button) => button.textContent?.trim() === buttonText && !button.disabled);
+  }, { timeout: 8_000 }, text);
+  await controlPage.evaluate((buttonText) => {
+    const button = Array.from(document.querySelectorAll("button"))
+      .find((candidate) => candidate.textContent?.trim() === buttonText);
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`Button was not found: ${buttonText}`);
+    }
+    button.click();
+  }, text);
+}
+
+async function waitForAriaPressed(controlPage, testId, expected) {
+  await controlPage.waitForFunction(
+    (selector, expectedValue) => document.querySelector(selector)?.getAttribute("aria-pressed") === String(expectedValue),
+    { timeout: 8_000 },
+    `[data-testid="${testId}"]`,
+    expected,
+  );
 }
 
 async function waitForRecorderStatus(controlPage, status) {
@@ -251,6 +323,32 @@ async function waitForScenarioCount(controlPage, count) {
     await delay(100);
   }
   throw new Error(`Saved scenarios did not reach ${count}.`);
+}
+
+async function waitForDownloadedFile(extension) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 8_000) {
+    const files = readdirSync(downloadDir)
+      .filter((file) => file.endsWith(extension) && !file.endsWith(".crdownload"))
+      .sort();
+    if (files.length > 0) {
+      return resolve(downloadDir, files.at(-1));
+    }
+    await delay(100);
+  }
+  throw new Error(`Download with extension ${extension} was not created.`);
+}
+
+function parseJsonl(text) {
+  return text
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+function targetMatches(target, expected) {
+  return target?.id === expected.id || target?.name === expected.name || target?.label === expected.label;
 }
 
 async function sendExtensionMessage(controlPage, message) {
