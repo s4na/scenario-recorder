@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentMessage } from "../shared/messages";
 import { sendRuntimeMessage } from "../shared/messages";
-import { parseScenarioImport, scenarioToJsonl, scenarioToPlaywright, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
+import { parseScenarioImport, scenarioToJsonl, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
 import type { RecorderState, Scenario, ScenarioRecorderSettings } from "../shared/types";
 import { downloadJson, downloadText, formatTimestampForFile, sanitizeFilePart } from "../shared/utils";
+import { playwrightDownloadPayload } from "./downloads";
 
 const EMPTY_STATE: RecorderState = {
   status: "idle",
@@ -411,7 +412,14 @@ export default function App() {
                   <button onClick={() => downloadText(`${sanitizeFilePart(scenario.name)}.jsonl`, scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
                     JSONL
                   </button>
-                  <button onClick={() => downloadText(`${sanitizeFilePart(scenario.name)}.spec.ts`, scenarioToPlaywright(scenario), "text/typescript;charset=utf-8")}>
+                  <button
+                    onClick={() =>
+                      runAction(async () => {
+                        const payload = playwrightDownloadPayload(scenario, settings);
+                        downloadText(payload.filename, payload.text, payload.type);
+                      })
+                    }
+                  >
                     Playwright
                   </button>
                   {editingScenarioId === scenario.id ? (

@@ -191,7 +191,8 @@ async function recordStep(
     if (
       state.status !== "recording" ||
       (senderTabId !== undefined && state.targetTabId !== senderTabId) ||
-      !isAllowedBySettings(step.type === "navigation" ? step.toUrl ?? step.url : step.url, settings)
+      !isAllowedBySettings(step.type === "navigation" ? step.toUrl ?? step.url : step.url, settings) ||
+      !isAllowedSenderTab(step, senderTabId, settings)
     ) {
       return state;
     }
@@ -279,6 +280,17 @@ function isAllowedBySettings(url: string | undefined, settings: ScenarioRecorder
   } catch {
     return false;
   }
+}
+
+function isAllowedSenderTab(
+  step: ScenarioStep,
+  senderTabId: number | undefined,
+  settings: ScenarioRecorderSettings,
+): boolean {
+  if (settings.allowedOrigins.length === 0 || senderTabId === undefined || step.type === "navigation") {
+    return true;
+  }
+  return isAllowedBySettings(tabUrls.get(senderTabId), settings);
 }
 
 async function setTabUrl(tabId: number, url: string): Promise<void> {

@@ -29,10 +29,17 @@ const RESERVED_IDENTIFIERS = new Set([
   "function",
   "if",
   "import",
+  "implements",
   "in",
+  "interface",
   "instanceof",
+  "let",
   "new",
   "null",
+  "package",
+  "private",
+  "protected",
+  "public",
   "return",
   "super",
   "switch",
@@ -81,7 +88,19 @@ export const SCENARIO_JSON_SCHEMA = {
     updatedAt: { type: "string", format: "date-time" },
     startUrl: { type: "string" },
     baseUrl: { type: "string" },
-    variables: { type: "object" },
+    variables: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        required: ["type"],
+        properties: {
+          type: { enum: ["string", "number", "boolean"] },
+          defaultValue: { oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }] },
+          secret: { type: "boolean" }
+        },
+        additionalProperties: true
+      }
+    },
     recording: {
       type: "object",
       required: ["sessions"],
@@ -191,6 +210,10 @@ export const SCENARIO_JSON_SCHEMA = {
           {
             if: { properties: { type: { enum: ["click", "submit", "navigation", "goto", "wait", "assert"] } } },
             then: { not: { required: ["value"] } }
+          },
+          {
+            if: { properties: { type: { const: "assert" } } },
+            then: { required: ["assertion"] }
           }
         ],
         additionalProperties: true
@@ -215,8 +238,13 @@ export function scenarioToJsonl(scenario: Scenario): string {
   return scenario.steps.map((step) => JSON.stringify(step)).join("\n");
 }
 
-export function scenarioToPlaywright(scenario: Scenario): string {
+export type PlaywrightGenerationOptions = {
+  allowedOrigins?: string[];
+};
+
+export function scenarioToPlaywright(scenario: Scenario, options: PlaywrightGenerationOptions = {}): string {
   const context = createPlaywrightContext(scenario);
+  assertAllowedSecretPlayback(scenario, context, options.allowedOrigins ?? []);
   const lines = [
     "import { test, expect } from '@playwright/test';",
     ""
@@ -301,6 +329,41 @@ function createPlaywrightContext(scenario: Scenario): PlaywrightContext {
     variableDeclarations.push(`const ${identifier} = getRequiredEnv(${JSON.stringify(envName)});`);
   }
   return { maskExpressions, variableDeclarations };
+}
+
+function assertAllowedSecretPlayback(
+  scenario: Scenario,
+  context: PlaywrightContext,
+  allowedOrigins: string[],
+): void {
+  if (context.maskExpressions.size === 0 || allowedOrigins.length === 0) {
+    return;
+  }
+  const blockedUrl = scenarioUrls(scenario).find((url) => !isAllowedOrigin(url, allowedOrigins));
+  if (blockedUrl) {
+    throw new Error(`Cannot generate Playwright with secret variables for an outside target domain: ${blockedUrl}`);
+  }
+}
+
+function scenarioUrls(scenario: Scenario): string[] {
+  return [
+    scenario.startUrl,
+    scenario.baseUrl,
+    ...scenario.steps.flatMap((step) => [
+      step.url,
+      step.fromUrl,
+      step.toUrl,
+      step.assertion?.kind === "url" ? step.assertion.expected : undefined,
+    ]),
+  ].filter((url): url is string => typeof url === "string" && url.length > 0);
+}
+
+function isAllowedOrigin(url: string, allowedOrigins: string[]): boolean {
+  try {
+    return allowedOrigins.includes(new URL(url).origin);
+  } catch {
+    return false;
+  }
 }
 
 function stepToPlaywright(step: ScenarioStep, previousStep: ScenarioStep | undefined, context: PlaywrightContext): string[] {
@@ -541,7 +604,7 @@ function isScenarioStep(value: unknown): value is ScenarioStep {
     typeof step.timestamp === "number" &&
     typeof step.url === "string" &&
     isValidStepValueForType(step.type, step.value) &&
-    (step.assertion === undefined || isStepAssertion(step.assertion)) &&
+    isValidStepAssertionForType(step.type, step.assertion) &&
     (step.target === undefined || isTargetSnapshot(step.target))
   );
 }
@@ -567,6 +630,13 @@ function isValidStepValueForType(type: ScenarioStep["type"], value: unknown): bo
     return typeof value === "string" || (Array.isArray(value) && value.every((item) => typeof item === "string"));
   }
   return value === undefined;
+}
+
+function isValidStepAssertionForType(type: ScenarioStep["type"], value: unknown): boolean {
+  if (type === "assert") {
+    return isStepAssertion(value);
+  }
+  return value === undefined || isStepAssertion(value);
 }
 
 function isStepAssertion(value: unknown): value is NonNullable<ScenarioStep["assertion"]> {

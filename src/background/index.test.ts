@@ -168,6 +168,26 @@ describe("background", () => {
     } as chrome.webNavigation.WebNavigationTransitionCallbackDetails);
     await waitForTabUrl(1, undefined);
 
+    await sendMessage(
+      {
+        type: "RECORDED_STEP",
+        payload: {
+          step: {
+            id: "delayed_step",
+            type: "fill",
+            timestamp: 250,
+            url: "https://app.example/start",
+            value: "delayed",
+            target: {
+              tagName: "input",
+              selectorCandidates: [{ type: "label", value: "Search", confidence: 90 }]
+            }
+          }
+        }
+      },
+      { tab: { id: 1 } as chrome.tabs.Tab },
+    );
+
     await expect(sendMessage(
       { type: "IS_RECORDING_TARGET" },
       { tab: { id: 1 } as chrome.tabs.Tab },

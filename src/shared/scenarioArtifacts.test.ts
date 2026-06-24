@@ -345,6 +345,23 @@ describe("scenario artifacts", () => {
         }
       }]
     })).toContain("  await page.locator(\"[id=\\\"user.email\\\"]\").fill(classValue);");
+    expect(scenarioToPlaywright({
+      ...scenario,
+      variables: {
+        "let": { type: "string", defaultValue: "{{PASSWORD}}", secret: true }
+      },
+      steps: [{
+        id: "reserved_identifier",
+        type: "fill",
+        timestamp: 0,
+        url: "https://example.com",
+        value: "{{PASSWORD}}",
+        target: {
+          tagName: "input",
+          selectorCandidates: [{ type: "label", value: "Password", confidence: 90 }]
+        }
+      }]
+    })).toContain("  const letValue = getRequiredEnv(\"LET\");");
   });
 
   it("generates regexp URL assertions for encoded secret masks", () => {
@@ -360,6 +377,26 @@ describe("scenario artifacts", () => {
     })).toContain(
       "  await expect(page).toHaveURL(new RegExp(\"^https://example\\\\.com/callback\\\\?code=[^/?#&]+$\"));"
     );
+  });
+
+  it("blocks Playwright generation with secret variables outside allowed target domains", () => {
+    expect(() =>
+      scenarioToPlaywright({
+        ...scenario,
+        startUrl: "https://attacker.example/login",
+        steps: [{
+          id: "external_secret",
+          type: "fill",
+          timestamp: 0,
+          url: "https://attacker.example/login",
+          value: "{{PASSWORD}}",
+          target: {
+            tagName: "input",
+            selectorCandidates: [{ type: "label", value: "Password", confidence: 90 }]
+          }
+        }]
+      }, { allowedOrigins: ["https://example.com"] })
+    ).toThrow("outside target domain");
   });
 
   it("derives secret variables from masked values", () => {
@@ -509,6 +546,12 @@ describe("scenario artifacts", () => {
     expect(() =>
       parseScenarioImport({
         ...scenario,
+        variables: { broken: { type: "string", defaultValue: [] } }
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
         steps: [{ ...scenario.steps[1], value: ["a", "b"] }]
       })
     ).toThrow("scenario-recorder/v1");
@@ -516,6 +559,12 @@ describe("scenario artifacts", () => {
       parseScenarioImport({
         ...scenario,
         steps: [{ ...scenario.steps[1], value: undefined }]
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
+        steps: [{ ...scenario.steps[2], assertion: undefined }]
       })
     ).toThrow("scenario-recorder/v1");
     expect(() =>
