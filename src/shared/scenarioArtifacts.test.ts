@@ -557,6 +557,12 @@ describe("scenario artifacts", () => {
     expect(() =>
       parseScenarioImport({
         ...scenario,
+        variables: { password: { type: "string", defaultValue: "actual-secret", secret: true } }
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
         steps: [{ ...scenario.steps[1], value: ["a", "b"] }]
       })
     ).toThrow("scenario-recorder/v1");

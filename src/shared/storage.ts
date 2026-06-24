@@ -75,7 +75,7 @@ export async function importScenarios(scenarios: Scenario[]): Promise<Scenario[]
   }
   const imported = Array.from(importedById.values()).filter((scenario) => {
     const existing = currentById.get(scenario.id);
-    return !existing || isSameOrNewerScenario(scenario, existing);
+    return !existing || isNewerScenario(scenario, existing);
   });
   const importedIds = new Set(imported.map((scenario) => scenario.id));
   const next = [...imported, ...current.filter((scenario) => !importedIds.has(scenario.id))];
@@ -85,6 +85,10 @@ export async function importScenarios(scenarios: Scenario[]): Promise<Scenario[]
 
 function isSameOrNewerScenario(candidate: Scenario, current: Scenario): boolean {
   return Date.parse(candidate.updatedAt) >= Date.parse(current.updatedAt);
+}
+
+function isNewerScenario(candidate: Scenario, current: Scenario): boolean {
+  return Date.parse(candidate.updatedAt) > Date.parse(current.updatedAt);
 }
 
 export async function getSettings(): Promise<ScenarioRecorderSettings> {

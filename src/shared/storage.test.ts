@@ -47,6 +47,7 @@ describe("storage", () => {
     const scenarios = await importScenarios([
       scenario("existing", "older import", "2026-06-23T10:00:00.000Z"),
       scenario("replace", "new import", "2026-06-24T10:00:00.000Z"),
+      scenario("existing", "same timestamp import", "2026-06-24T10:00:00.000Z"),
       scenario("duplicate", "first", "2026-06-23T10:00:00.000Z"),
       scenario("duplicate", "last", "2026-06-23T10:00:00.000Z")
     ]);

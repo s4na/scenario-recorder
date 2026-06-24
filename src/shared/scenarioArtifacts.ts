@@ -98,6 +98,10 @@ export const SCENARIO_JSON_SCHEMA = {
           defaultValue: { oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }] },
           secret: { type: "boolean" }
         },
+        allOf: [{
+          if: { properties: { secret: { const: true } }, required: ["secret", "defaultValue"] },
+          then: { properties: { defaultValue: { enum: MASK_TOKENS } } }
+        }],
         additionalProperties: true
       }
     },
@@ -736,6 +740,9 @@ function isOptionalVariables(value: unknown): value is Scenario["variables"] | u
 
 function isScenarioVariable(value: unknown): boolean {
   if (!isPlainObject(value)) {
+    return false;
+  }
+  if (value.secret === true && value.defaultValue !== undefined && !MASK_TOKENS.includes(String(value.defaultValue))) {
     return false;
   }
   return (
