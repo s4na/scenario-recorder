@@ -99,7 +99,7 @@ function formatScenarioLocationName(
   }
   try {
     const url = new URL(rawUrl);
-    const host = url.hostname.replace(/\./g, "-");
+    const host = url.host.replace(/\./g, "-");
     const path = url.pathname.replace(/^\/+|\/+$/g, "");
     return sanitizeFilePart(path ? `${host}-${path}` : host);
   } catch {

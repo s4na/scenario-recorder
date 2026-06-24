@@ -17,7 +17,7 @@ Webアプリ上のユーザー操作をChrome拡張で記録し、CodexやPlaywr
 - シナリオJSON/JSONLのインポート
 - 保存済みシナリオの名前、説明、タグ編集
 - 互換JSON Schemaのダウンロード
-- 対象ドメイン設定
+- 対象origin設定
 - 記録詳細度設定（minimal/context）
 - 現在URL、タイトルのassertion追加
 - マスク済み入力値からのsecret変数生成
@@ -124,16 +124,6 @@ popupの「互換JSON Schemaをダウンロード」では、このJSON形式の
 }
 ```
 
-保存前の現在の記録をダウンロードする場合は `scenario-recorder/current/v1` です。
-
-```json
-{
-  "schemaVersion": "scenario-recorder/current/v1",
-  "exportedAt": "2026-06-23T10:10:00.000Z",
-  "state": {}
-}
-```
-
 ## 記録詳細度
 
 popupの「記録の詳細度」で、クリック対象などの保存粒度を選べます。
@@ -141,14 +131,14 @@ popupの「記録の詳細度」で、クリック対象などの保存粒度を
 - `minimal`: 対象要素のselector候補、テキスト、role、id、座標などを保存します。
 - `context`: `minimal`に加えて、テーブル行、カード、セクション、フォームなど近い親要素の短い文脈を保存します。CodexにJSONLを渡して「同じ名前のボタンが複数ある画面」を扱う場合に向いています。メールアドレス、電話番号風の値、長いID、OTP風の値は文脈テキスト内でマスクします。
 
-`context`は周辺DOMテキストを保存するため、マスクできない業務情報や個人情報が含まれる可能性があります。必要に応じて対象ドメインやマスク対象を調整してください。
+`context`は周辺DOMテキストを保存するため、マスクできない業務情報や個人情報が含まれる可能性があります。必要に応じて対象originやマスク対象を調整してください。
 
 ## セキュリティ・プライバシー上の注意
 
 - MVPでは開発しやすさのため `host_permissions` に `<all_urls>` を使っています。
-- 本番運用では対象ドメインに絞るべきです。
-- popupの「対象ドメイン」で録画開始対象のoriginを絞れます。
-- secret変数を含むPlaywrightコード生成では、対象ドメイン設定が必要です。
+- 本番運用では対象originに絞るべきです。
+- popupの「対象origin」で録画開始とシナリオ実行の対象originを絞れます。
+- secret変数を含むPlaywrightコード生成では、対象origin設定が必要です。
 - 入力値は外部APIへ送信しません。
 - 入力値を `console.log` に出力しません。
 - password、token、secret、credit card系の入力値は保存前にマスクします。

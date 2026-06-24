@@ -378,7 +378,7 @@ async function loadTabUrls(): Promise<void> {
 
 function createScenario(name: string, state: RecorderState): Scenario {
   const now = toIsoNow();
-  const startUrl = getScenarioStartUrl(state);
+  const startUrl = getRecordingStartUrl(state);
   const baseUrl = getBaseUrl(startUrl);
 
   return {
@@ -405,7 +405,7 @@ function createScenario(name: string, state: RecorderState): Scenario {
   };
 }
 
-function getScenarioStartUrl(state: RecorderState): string | undefined {
+function getRecordingStartUrl(state: RecorderState): string | undefined {
   const firstStep = state.currentSteps[0];
   return sanitizeOptionalUrl(
     firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url,
@@ -436,7 +436,7 @@ async function saveCurrentScenario(
     }
     const scenarioName =
       name.trim() ||
-      formatTimestampForScenarioName(new Date(), getScenarioStartUrl(state));
+      formatTimestampForScenarioName(new Date(), getRecordingStartUrl(state));
     const scenario = withDerivedSecretVariables(createScenario(scenarioName, state));
     await saveScenario(scenario);
     await clearRecorderState();
@@ -551,7 +551,7 @@ async function exportStoredScenarios(): Promise<ScenarioExport> {
   }));
 }
 
-function getScenarioStartUrl(scenario: Scenario): string {
+function getExecutableScenarioStartUrl(scenario: Scenario): string {
   const firstStep = scenario.steps[0];
   const url = scenario.startUrl ?? (firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url);
   if (!url || !isHttpUrl(url)) {
@@ -591,7 +591,10 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
     if (!scenario) {
       throw new Error("Scenario not found.");
     }
-    const tab = await chrome.tabs.create({ active: true, url: getScenarioStartUrl(scenario) });
+    const settings = await getSettings();
+    const startUrl = getExecutableScenarioStartUrl(scenario);
+    assertScenarioUrlAllowed(startUrl, settings);
+    const tab = await chrome.tabs.create({ active: true, url: startUrl });
     if (tab.id === undefined) {
       throw new Error("Could not open a tab for the scenario.");
     }
@@ -603,6 +606,7 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
       if (step.type === "navigation" || step.type === "goto") {
         const nextUrl = step.type === "navigation" ? step.toUrl ?? step.url : step.url;
         if (nextUrl && isHttpUrl(nextUrl)) {
+          assertScenarioUrlAllowed(nextUrl, settings);
           await chrome.tabs.update(tab.id, { url: nextUrl });
           await waitForTabReady(tab.id);
           await injectRecorderIntoTab(await chrome.tabs.get(tab.id));
@@ -613,6 +617,15 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
     }
     return { ok: true, scenario };
   });
+}
+
+function assertScenarioUrlAllowed(
+  url: string,
+  settings: ScenarioRecorderSettings,
+): void {
+  if (!isAllowedBySettings(url, settings)) {
+    throw new Error("Scenario URL is outside the configured target domains.");
+  }
 }
 
 async function getStoredSettings(): Promise<ScenarioRecorderSettings> {

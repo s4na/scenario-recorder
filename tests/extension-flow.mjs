@@ -213,6 +213,19 @@ async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureO
     () => document.querySelector("#login-result")?.textContent === "Logged in as user@example.com",
     { timeout: 8_000 },
   );
+
+  await setSettings(controlPage, {
+    allowedOrigins: ["https://blocked.example.test"],
+    recordingDetailLevel: "context",
+  });
+  await assertRejects(
+    () =>
+      sendExtensionMessage(controlPage, {
+        type: "EXECUTE_SCENARIO",
+        payload: { scenarioId: scenario.id },
+      }),
+    "Scenario URL is outside the configured target domains.",
+  );
 }
 
 async function clickPopup(controlPage, testId) {
@@ -399,6 +412,19 @@ async function sendExtensionMessage(controlPage, message) {
       }),
     message,
   );
+}
+
+async function assertRejects(action, expectedMessage) {
+  try {
+    await action();
+  } catch (error) {
+    assert(
+      error instanceof Error && error.message.includes(expectedMessage),
+      `Expected rejection to include "${expectedMessage}", got "${error instanceof Error ? error.message : String(error)}".`,
+    );
+    return;
+  }
+  fail(`Expected action to reject with "${expectedMessage}".`);
 }
 
 async function startFixtureServer() {
