@@ -9,6 +9,7 @@ Webアプリ上のユーザー操作をChrome拡張で記録し、CodexやPlaywr
 - click、input、select、submit、通常遷移、SPA遷移の記録
 - `chrome.storage.local` への複数シナリオ保存
 - 保存済みシナリオ一覧の表示
+- 保存済みシナリオの実行
 - シナリオ単位のJSONLエクスポート
 - シナリオ単位のJSONエクスポート
 - 全シナリオの一括JSONエクスポート
@@ -73,6 +74,8 @@ GitHubが自動生成する「Source code」zipは開発用ソースです。Chr
 6. シナリオ名を入力して「保存してJSONLへ進む」を押します。
 7. 「渡す」の「Codex用JSONLをダウンロード」からJSONLを保存します。
 8. 必要に応じてJSONやPlaywrightコードもダウンロードします。
+
+保存済みのシナリオは「シナリオ一覧」から個別に実行、JSONLダウンロード、JSONダウンロード、Playwrightダウンロード、編集、削除できます。
 
 ## 保存されるJSONL形式
 

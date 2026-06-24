@@ -209,6 +209,8 @@ button {
   color: #18212f;
   background: #f8fafc;
   cursor: pointer;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 button:hover:not(:disabled) {
@@ -282,7 +284,7 @@ button.danger {
 }
 
 .handoffPanel .supportActions {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .stepPreview {
@@ -398,7 +400,7 @@ button.danger {
 }
 
 .scenarioActions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .editFields {

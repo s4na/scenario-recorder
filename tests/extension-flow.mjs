@@ -47,7 +47,7 @@ try {
   await clearExtensionStorage(controlPage);
 
   await runContextRecording({ controlPage, fixturePage, fixtureOrigin });
-  await runMinimalRecording({ controlPage, fixturePage, fixtureOrigin });
+  await runMinimalRecording({ browser, controlPage, fixturePage, fixtureOrigin });
 
   const scenarios = await getScenarios(controlPage);
   assert(scenarios.length === 2, `Expected 2 saved scenarios, got ${scenarios.length}.`);
@@ -69,7 +69,11 @@ try {
   const popupText = await controlPage.evaluate(() => document.body.innerText);
   assert(popupText.includes("作る"), "Popup does not expose the recording workflow.");
   assert(popupText.includes("渡す"), "Popup does not expose the handoff workflow.");
+  assert(popupText.includes("シナリオ一覧"), "Popup does not expose the scenario list.");
+  assert(popupText.includes("実行"), "Popup does not expose scenario execution.");
   assert(popupText.includes("Codex用JSONLをダウンロード"), "Popup does not prioritize JSONL handoff.");
+  assert(popupText.includes("JSONをダウンロード"), "Popup does not expose per-scenario JSON download.");
+  assert(popupText.includes("Playwrightをダウンロード"), "Popup does not expose per-scenario Playwright download.");
   assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
   await clickPopupButtonWithText(controlPage, "Codex用JSONLをダウンロード");
   const latestJsonl = await waitForDownloadedFile(".jsonl");
@@ -161,7 +165,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   );
 }
 
-async function runMinimalRecording({ controlPage, fixturePage, fixtureOrigin }) {
+async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureOrigin }) {
   await fixturePage.goto(`${fixtureOrigin}/fixture?case=minimal`, { waitUntil: "domcontentloaded" });
   await setSettings(controlPage, {
     allowedOrigins: [fixtureOrigin],
@@ -195,6 +199,15 @@ async function runMinimalRecording({ controlPage, fixturePage, fixtureOrigin }) 
   assert(
     scenario.steps.every((step) => !step.target?.context),
     "Minimal recording unexpectedly kept target context.",
+  );
+
+  await controlPage.reload({ waitUntil: "domcontentloaded" });
+  const existingPages = new Set(await browser.pages());
+  await clickPopupButtonWithText(controlPage, "実行");
+  const executedPage = await waitForNewPage(browser, existingPages);
+  await executedPage.waitForFunction(
+    () => document.querySelector("#login-result")?.textContent === "Logged in as user@example.com",
+    { timeout: 8_000 },
   );
 }
 
@@ -320,6 +333,19 @@ async function waitForScenarioCount(controlPage, count) {
   throw new Error(`Saved scenarios did not reach ${count}.`);
 }
 
+async function waitForNewPage(browser, existingPages) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 8_000) {
+    const page = (await browser.pages()).find((candidate) => !existingPages.has(candidate));
+    if (page) {
+      await page.waitForFunction(() => document.readyState === "complete", { timeout: 8_000 });
+      return page;
+    }
+    await delay(100);
+  }
+  throw new Error("Scenario execution did not open a new page.");
+}
+
 async function waitForDownloadedFile(extension) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 8_000) {
@@ -441,8 +467,15 @@ function fixtureHtml() {
               <input id="login-email" name="email" type="email" placeholder="Email">
             </label>
             <button id="login-submit" type="button">Log in</button>
+            <p id="login-result"></p>
           </section>
         </main>
+        <script>
+          document.querySelector("#login-submit").addEventListener("click", () => {
+            document.querySelector("#login-result").textContent =
+              "Logged in as " + document.querySelector("#login-email").value;
+          });
+        </script>
       </body>
     </html>`;
 }

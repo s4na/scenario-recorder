@@ -36,6 +36,10 @@ function scenarioJsonlFileName(scenario: Scenario): string {
   return `${sanitizeFilePart(scenario.name)}.jsonl`;
 }
 
+function scenarioPlaywrightFileName(scenario: Scenario): string {
+  return `${sanitizeFilePart(scenario.name)}.spec.ts`;
+}
+
 function describeStep(step: ScenarioStep): string {
   const targetName = step.target?.label ?? step.target?.ariaLabel ?? step.target?.text ?? step.target?.placeholder;
   const target = targetName ? `「${targetName}」` : step.target?.tagName?.toLowerCase();
@@ -165,6 +169,13 @@ export default function App() {
     });
     setScenarios(response.scenarios);
     setEditingScenarioId(undefined);
+  }
+
+  async function executeScenario(scenario: Scenario): Promise<void> {
+    await sendRuntimeMessage<"EXECUTE_SCENARIO">({
+      type: "EXECUTE_SCENARIO",
+      payload: { scenarioId: scenario.id }
+    });
   }
 
   async function flushActiveTabInputs(): Promise<void> {
@@ -405,18 +416,25 @@ export default function App() {
             Codex用JSONLをダウンロード
           </button>
           <div className="supportActions">
+            <button
+              onClick={() =>
+                runAction(() => executeScenario(latestScenario), "シナリオを実行しました")
+              }
+            >
+              実行
+            </button>
             <button onClick={() => downloadJson(scenarioFileName(latestScenario), latestScenario)}>
-              JSON
+              JSONをダウンロード
             </button>
             <button
               onClick={() =>
                 runAction(async () => {
                   const payload = playwrightDownloadPayload(latestScenario, settings);
-                  downloadText(payload.filename, payload.text, payload.type);
+                  downloadText(scenarioPlaywrightFileName(latestScenario), payload.text, payload.type);
                 })
               }
             >
-              Playwright
+              Playwrightをダウンロード
             </button>
           </div>
         </section>
@@ -505,7 +523,10 @@ export default function App() {
 
       <section className="section scenarioList">
         <div className="sectionHeader">
-          <h2>保存済みシナリオ</h2>
+          <div>
+            <h2>シナリオ一覧</h2>
+            <p>保存済みシナリオを実行、個別ダウンロード、編集</p>
+          </div>
           <span>{scenarios.length}</span>
         </div>
 
@@ -539,21 +560,29 @@ export default function App() {
                   <small>更新: {new Date(scenario.updatedAt).toLocaleString()}</small>
                 </div>
                 <div className="scenarioActions">
-                  <button className="primary" onClick={() => downloadText(scenarioJsonlFileName(scenario), scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
-                    JSONL
+                  <button
+                    className="primary"
+                    onClick={() =>
+                      runAction(() => executeScenario(scenario), "シナリオを実行しました")
+                    }
+                  >
+                    実行
+                  </button>
+                  <button onClick={() => downloadText(scenarioJsonlFileName(scenario), scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
+                    JSONLをダウンロード
                   </button>
                   <button onClick={() => downloadJson(scenarioFileName(scenario), scenario)}>
-                    JSON
+                    JSONをダウンロード
                   </button>
                   <button
                     onClick={() =>
                       runAction(async () => {
                         const payload = playwrightDownloadPayload(scenario, settings);
-                        downloadText(payload.filename, payload.text, payload.type);
+                        downloadText(scenarioPlaywrightFileName(scenario), payload.text, payload.type);
                       })
                     }
                   >
-                    Playwright
+                    Playwrightをダウンロード
                   </button>
                   {editingScenarioId === scenario.id ? (
                     <button

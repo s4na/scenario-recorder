@@ -543,6 +543,70 @@ async function exportStoredScenarios(): Promise<ScenarioExport> {
   }));
 }
 
+function getScenarioStartUrl(scenario: Scenario): string {
+  const firstStep = scenario.steps[0];
+  const url = scenario.startUrl ?? (firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url);
+  if (!url || !isHttpUrl(url)) {
+    throw new Error("Scenario does not have an HTTP or HTTPS start URL.");
+  }
+  return url;
+}
+
+async function waitForTabReady(tabId: number): Promise<void> {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status === "complete") {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("Timed out waiting for the scenario tab to load.");
+}
+
+async function sendScenarioStep(tabId: number, step: ScenarioStep): Promise<void> {
+  const response = await chrome.tabs.sendMessage(tabId, {
+    type: "EXECUTE_SCENARIO_STEP",
+    payload: { step },
+  });
+  if (response && typeof response === "object" && "error" in response) {
+    throw new Error(String(response.error));
+  }
+}
+
+async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; scenario: Scenario }> {
+  return enqueueStateMutation(async () => {
+    const currentState = await getRecorderState();
+    if (currentState.status !== "idle") {
+      throw new Error("Stop the current recording before running a scenario.");
+    }
+    const scenario = (await getScenarios()).find((item) => item.id === scenarioId);
+    if (!scenario) {
+      throw new Error("Scenario not found.");
+    }
+    const tab = await chrome.tabs.create({ active: true, url: getScenarioStartUrl(scenario) });
+    if (tab.id === undefined) {
+      throw new Error("Could not open a tab for the scenario.");
+    }
+    await waitForTabReady(tab.id);
+    if (!await injectRecorderIntoTab(await chrome.tabs.get(tab.id))) {
+      throw new Error("Could not prepare the scenario tab.");
+    }
+    for (const step of scenario.steps) {
+      if (step.type === "navigation" || step.type === "goto") {
+        const nextUrl = step.type === "navigation" ? step.toUrl ?? step.url : step.url;
+        if (nextUrl && isHttpUrl(nextUrl)) {
+          await chrome.tabs.update(tab.id, { url: nextUrl });
+          await waitForTabReady(tab.id);
+          await injectRecorderIntoTab(await chrome.tabs.get(tab.id));
+        }
+        continue;
+      }
+      await sendScenarioStep(tab.id, step);
+    }
+    return { ok: true, scenario };
+  });
+}
+
 async function getStoredSettings(): Promise<ScenarioRecorderSettings> {
   return getSettings();
 }
@@ -667,6 +731,8 @@ async function handleMessage(
       return getStoredScenario(message.payload.scenarioId);
     case "EXPORT_ALL_SCENARIOS":
       return exportStoredScenarios();
+    case "EXECUTE_SCENARIO":
+      return executeStoredScenario(message.payload.scenarioId);
     case "GET_SETTINGS":
       return getStoredSettings();
     case "UPDATE_SETTINGS":

@@ -76,6 +76,10 @@ export type MessageMap = {
     payload: undefined;
     response: ScenarioExport;
   };
+  EXECUTE_SCENARIO: {
+    payload: { scenarioId: string };
+    response: { ok: true; scenario: Scenario };
+  };
   GET_SETTINGS: {
     payload: undefined;
     response: ScenarioRecorderSettings;
@@ -99,6 +103,10 @@ export type RuntimeResponse<TType extends MessageType> = MessageMap[TType]["resp
 export type ContentMessageMap = {
   FLUSH_PENDING_INPUTS: {
     payload: undefined;
+    response: { ok: true } | { error: string };
+  };
+  EXECUTE_SCENARIO_STEP: {
+    payload: { step: ScenarioStep };
     response: { ok: true } | { error: string };
   };
 };
