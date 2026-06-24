@@ -237,4 +237,105 @@ describe("background", () => {
       { tab: { id: 1 } as chrome.tabs.Tab },
     )).resolves.toEqual({ recording: false });
   });
+
+  it("returns recording summary details for the target tab overlay", async () => {
+    const state: RecorderState = {
+      status: "recording",
+      currentSteps: [
+        {
+          id: "step-1",
+          type: "click",
+          timestamp: 100,
+          url: "https://app.example/start",
+          target: {
+            tagName: "button",
+            selectorCandidates: [{ type: "text", value: "Save", confidence: 80 }]
+          }
+        },
+        {
+          id: "step-2",
+          type: "fill",
+          timestamp: 200,
+          url: "https://app.example/start",
+          value: "value",
+          target: {
+            tagName: "input",
+            selectorCandidates: [{ type: "label", value: "Name", confidence: 90 }]
+          }
+        }
+      ],
+      recordingSessions: [{ startedAt: "2026-06-24T10:00:00.000Z" }],
+      targetTabId: 7,
+      startedAtMs: 100
+    };
+    localStorage.set("scenarioRecorder.recorderState", state);
+    localStorage.set("scenarioRecorder.settings", {
+      allowedOrigins: ["https://app.example"]
+    });
+
+    await expect(sendMessage(
+      { type: "GET_RECORDING_OVERLAY_STATE" },
+      { tab: { id: 7, url: "https://app.example/start?token=raw" } as chrome.tabs.Tab },
+    )).resolves.toEqual({
+      visible: true,
+      status: "recording",
+      stepCount: 2,
+      lastStepType: "fill",
+      currentUrl: "https://app.example/start?token=%7B%7BSECRET%7D%7D"
+    });
+  });
+
+  it("hides the overlay for non-target tabs", async () => {
+    localStorage.set("scenarioRecorder.recorderState", {
+      status: "paused",
+      currentSteps: [],
+      recordingSessions: [{ startedAt: "2026-06-24T10:00:00.000Z" }],
+      targetTabId: 7
+    } satisfies RecorderState);
+
+    await expect(sendMessage(
+      { type: "GET_RECORDING_OVERLAY_STATE" },
+      { tab: { id: 8, url: "https://app.example/start" } as chrome.tabs.Tab },
+    )).resolves.toEqual({ visible: false });
+  });
+
+  it("keeps the overlay visible while the target tab recording is paused", async () => {
+    localStorage.set("scenarioRecorder.recorderState", {
+      status: "paused",
+      currentSteps: [],
+      recordingSessions: [{ startedAt: "2026-06-24T10:00:00.000Z" }],
+      targetTabId: 7
+    } satisfies RecorderState);
+    localStorage.set("scenarioRecorder.settings", {
+      allowedOrigins: ["https://app.example"]
+    });
+
+    await expect(sendMessage(
+      { type: "GET_RECORDING_OVERLAY_STATE" },
+      { tab: { id: 7, url: "https://app.example/start" } as chrome.tabs.Tab },
+    )).resolves.toEqual({
+      visible: true,
+      status: "paused",
+      stepCount: 0,
+      lastStepType: undefined,
+      currentUrl: "https://app.example/start"
+    });
+  });
+
+  it("hides the overlay when the target tab leaves the configured domains", async () => {
+    localStorage.set("scenarioRecorder.recorderState", {
+      status: "recording",
+      currentSteps: [],
+      recordingSessions: [{ startedAt: "2026-06-24T10:00:00.000Z" }],
+      targetTabId: 7
+    } satisfies RecorderState);
+    localStorage.set("scenarioRecorder.settings", {
+      allowedOrigins: ["https://app.example"]
+    });
+
+    await expect(sendMessage(
+      { type: "GET_RECORDING_OVERLAY_STATE" },
+      { tab: { id: 7, url: "https://idp.example/login" } as chrome.tabs.Tab },
+    )).resolves.toEqual({ visible: false });
+  });
 });

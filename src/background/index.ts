@@ -12,6 +12,7 @@ import {
 } from "../shared/storage";
 import type {
   RecorderState,
+  RecordingOverlayState,
   Scenario,
   ScenarioExport,
   ScenarioRecorderSettings,
@@ -583,6 +584,33 @@ async function isRecordingTarget(tab: chrome.tabs.Tab | undefined): Promise<{ re
   };
 }
 
+async function getRecordingOverlayState(
+  tab: chrome.tabs.Tab | undefined,
+): Promise<RecordingOverlayState | { visible: false }> {
+  const tabId = tab?.id;
+  if (tabId === undefined) {
+    return { visible: false };
+  }
+  const state = await getRecorderState();
+  const settings = await getSettings();
+  const url = tab?.url ?? tabUrls.get(tabId);
+  if (
+    (state.status !== "recording" && state.status !== "paused") ||
+    state.targetTabId !== tabId ||
+    !isAllowedBySettings(url, settings)
+  ) {
+    return { visible: false };
+  }
+  const lastStep = state.currentSteps.at(-1);
+  return {
+    visible: true,
+    status: state.status,
+    stepCount: state.currentSteps.length,
+    lastStepType: lastStep?.type,
+    currentUrl: sanitizeOptionalUrl(url),
+  };
+}
+
 function sanitizeStepUrls(step: ScenarioStep): ScenarioStep {
   return {
     ...step,
@@ -615,6 +643,8 @@ async function handleMessage(
       return getCurrentRecorderState();
     case "IS_RECORDING_TARGET":
       return isRecordingTarget(sender?.tab);
+    case "GET_RECORDING_OVERLAY_STATE":
+      return getRecordingOverlayState(sender?.tab);
     case "RECORDED_STEP":
       return recordStep(message.payload.step, sender?.tab?.id);
     case "SAVE_SCENARIO":

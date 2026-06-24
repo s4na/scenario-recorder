@@ -134,3 +134,11 @@ export type RecorderState = {
   targetWindowId?: number;
   startedAtMs?: number;
 };
+
+export type RecordingOverlayState = {
+  visible: true;
+  status: Extract<RecordingStatus, "recording" | "paused">;
+  stepCount: number;
+  lastStepType?: ScenarioStepType;
+  currentUrl?: string;
+};

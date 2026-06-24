@@ -1,4 +1,11 @@
-import type { RecorderState, Scenario, ScenarioExport, ScenarioRecorderSettings, ScenarioStep } from "./types";
+import type {
+  RecorderState,
+  RecordingOverlayState,
+  Scenario,
+  ScenarioExport,
+  ScenarioRecorderSettings,
+  ScenarioStep,
+} from "./types";
 
 export type MessageMap = {
   START_RECORDING: {
@@ -28,6 +35,10 @@ export type MessageMap = {
   IS_RECORDING_TARGET: {
     payload: undefined;
     response: { recording: boolean };
+  };
+  GET_RECORDING_OVERLAY_STATE: {
+    payload: undefined;
+    response: RecordingOverlayState | { visible: false };
   };
   RECORDED_STEP: {
     payload: { step: ScenarioStep };
