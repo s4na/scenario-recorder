@@ -23,9 +23,7 @@ type Notice = {
 };
 
 function scenarioFileName(scenario: Scenario): string {
-  return `scenario-${sanitizeFilePart(scenario.name)}-${formatTimestampForFile(
-    new Date(scenario.updatedAt)
-  )}.json`;
+  return `${sanitizeFilePart(scenario.name)}.json`;
 }
 
 function allScenariosFileName(): string {
@@ -245,7 +243,7 @@ export default function App() {
             data-testid="scenario-name"
             value={scenarioName}
             onChange={(event) => setScenarioName(event.target.value)}
-            placeholder="空なら日時で保存"
+            placeholder="空なら日時とURLで保存"
           />
         </label>
 

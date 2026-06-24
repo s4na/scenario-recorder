@@ -69,21 +69,42 @@ export function formatTimestampForFile(date = new Date()): string {
   ].join("");
 }
 
-export function formatTimestampForScenarioName(date = new Date()): string {
+export function formatTimestampForScenarioName(
+  date = new Date(),
+  url?: string,
+): string {
   const pad = (value: number) => String(value).padStart(2, "0");
-  return [
+  const timestamp = [
     date.getFullYear(),
     "-",
     pad(date.getMonth() + 1),
     "-",
     pad(date.getDate()),
-    "--",
+    "_",
     pad(date.getHours()),
     "-",
     pad(date.getMinutes()),
     "-",
     pad(date.getSeconds())
   ].join("");
+  const location = formatScenarioLocationName(url);
+  return location ? `${timestamp}_${location}` : timestamp;
+}
+
+function formatScenarioLocationName(
+  rawUrl: string | undefined,
+): string | undefined {
+  if (!rawUrl) {
+    return undefined;
+  }
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.replace(/\./g, "-");
+    const path = url.pathname.replace(/^\/+|\/+$/g, "");
+    return sanitizeFilePart(path ? `${host}-${path}` : host);
+  } catch {
+    return undefined;
+  }
 }
 
 export function sanitizeFilePart(value: string): string {

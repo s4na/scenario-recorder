@@ -378,10 +378,7 @@ async function loadTabUrls(): Promise<void> {
 
 function createScenario(name: string, state: RecorderState): Scenario {
   const now = toIsoNow();
-  const firstStep = state.currentSteps[0];
-  const startUrl = sanitizeOptionalUrl(
-    firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url,
-  );
+  const startUrl = getScenarioStartUrl(state);
   const baseUrl = getBaseUrl(startUrl);
 
   return {
@@ -408,6 +405,13 @@ function createScenario(name: string, state: RecorderState): Scenario {
   };
 }
 
+function getScenarioStartUrl(state: RecorderState): string | undefined {
+  const firstStep = state.currentSteps[0];
+  return sanitizeOptionalUrl(
+    firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url,
+  );
+}
+
 function getBaseUrl(url: string | undefined): string | undefined {
   if (!url || url.startsWith("about:")) {
     return undefined;
@@ -430,7 +434,9 @@ async function saveCurrentScenario(
     if (state.currentSteps.length === 0) {
       throw new Error("Cannot save a scenario without recorded steps.");
     }
-    const scenarioName = name.trim() || formatTimestampForScenarioName();
+    const scenarioName =
+      name.trim() ||
+      formatTimestampForScenarioName(new Date(), getScenarioStartUrl(state));
     const scenario = withDerivedSecretVariables(createScenario(scenarioName, state));
     await saveScenario(scenario);
     await clearRecorderState();

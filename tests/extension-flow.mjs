@@ -377,7 +377,7 @@ function targetMatches(target, expected) {
 }
 
 function isDefaultScenarioName(name) {
-  return /^\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}$/.test(name);
+  return /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_127-0-0-1-\d+-fixture$/.test(name);
 }
 
 async function sendExtensionMessage(controlPage, message) {
