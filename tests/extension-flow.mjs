@@ -201,9 +201,11 @@ async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureO
     "Minimal recording unexpectedly kept target context.",
   );
 
-  await controlPage.reload({ waitUntil: "domcontentloaded" });
   const existingPages = new Set(await browser.pages());
-  await clickPopupButtonWithText(controlPage, "実行");
+  await sendExtensionMessage(controlPage, {
+    type: "EXECUTE_SCENARIO",
+    payload: { scenarioId: scenario.id },
+  });
   const executedPage = await waitForNewPage(browser, existingPages);
   await executedPage.waitForFunction(
     () => document.querySelector("#login-result")?.textContent === "Logged in as user@example.com",
