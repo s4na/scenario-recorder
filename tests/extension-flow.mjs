@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
@@ -19,6 +20,7 @@ try {
   browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: false,
+    ignoreDefaultArgs: ["--disable-extensions"],
     userDataDir,
     args: [
       "--disable-gpu",
@@ -347,7 +349,10 @@ function findChrome() {
     process.env.CHROME_BIN,
     process.env.GOOGLE_CHROME_BIN,
     "/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
     "/usr/bin/google-chrome-for-testing",
@@ -357,6 +362,12 @@ function findChrome() {
     const chromePath = isAbsolute(candidate) ? candidate : resolve(candidate);
     if (existsSync(chromePath)) {
       return chromePath;
+    }
+  }
+  for (const command of ["google-chrome-for-testing", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
+    const result = spawnSync("which", [command], { encoding: "utf8" });
+    if (result.status === 0) {
+      return result.stdout.trim();
     }
   }
   fail("Chrome for Testing or Chromium was not found for extension E2E test.");

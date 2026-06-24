@@ -104,7 +104,7 @@ export default function App() {
     if (state.status === "recording") return "記録中";
     if (state.status === "paused") return "一時停止";
     return state.currentSteps.length > 0 ? "確認待ち" : "待機中";
-  }, [state.status]);
+  }, [state.currentSteps.length, state.status]);
 
   async function refresh() {
     const [nextState, scenariosResponse, nextSettings] = await Promise.all([
@@ -424,11 +424,11 @@ export default function App() {
         <summary>対象と管理</summary>
         <div className="detailsBody">
           <div className="sectionHeader">
-            <h2>対象ドメイン</h2>
+            <h2>対象 origin</h2>
             <span>{settings.allowedOrigins.length || "all"}</span>
           </div>
           <label className="field">
-            <span>1行に1 origin</span>
+            <span>1行に1 origin。空なら全HTTP/HTTPSページを対象にします。</span>
             <textarea
               value={allowedOriginsText}
               onChange={(event) => {
@@ -455,7 +455,7 @@ export default function App() {
               }, "対象ドメインを保存しました")
             }
           >
-            対象ドメインを保存
+              対象 originを保存
           </button>
 
           <div className="managementActions">
