@@ -91,7 +91,7 @@ GitHubが自動生成する「Source code」zipは開発用ソースです。Chr
 ## 互換JSON形式
 
 UI内部と互換エクスポート用のシナリオJSONは `scenario-recorder/v1` です。
-popupの「互換JSON Schemaをダウンロード」では、このJSON形式のschemaを保存できます。
+popupの「JSON Schema」では、このJSON形式のschemaを保存できます。
 
 ```json
 {

@@ -214,6 +214,7 @@ export const SCENARIO_JSON_SCHEMA = {
             },
             additionalProperties: true
           },
+          submitter: { $ref: "#/properties/steps/items/properties/target" },
           assertion: {
             type: "object",
             required: ["kind", "expected"],
@@ -354,7 +355,7 @@ export function scenarioToPlaywright(scenario: Scenario, options: PlaywrightGene
       "",
       "async function assertAllowedOrigin(page: import('@playwright/test').Page): Promise<void> {",
       "  const origin = new URL(page.url()).origin;",
-      "  expect(allowedOrigins.has(origin), `Current origin is outside target domains: ${origin}`).toBe(true);",
+      "  expect(allowedOrigins.has(origin), `Current origin is outside target origins: ${origin}`).toBe(true);",
       "}",
       ""
     );
@@ -503,11 +504,11 @@ function assertAllowedSecretPlayback(
     return;
   }
   if (allowedOrigins.length === 0) {
-    throw new Error("Set target domains before generating Playwright with secret variables.");
+    throw new Error("Set target origins before generating Playwright with secret variables.");
   }
   const blockedUrl = scenarioUrls(scenario).find((url) => !isAllowedOrigin(url, allowedOrigins));
   if (blockedUrl) {
-    throw new Error(`Cannot generate Playwright with secret variables for an outside target domain: ${blockedUrl}`);
+    throw new Error(`Cannot generate Playwright with secret variables for an outside target origin: ${blockedUrl}`);
   }
 }
 

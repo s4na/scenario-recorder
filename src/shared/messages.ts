@@ -109,6 +109,10 @@ export type ContentMessageMap = {
     payload: { step: ScenarioStep };
     response: { ok: true } | { error: string };
   };
+  PREVIEW_SCENARIO_STEP: {
+    payload: { step: ScenarioStep };
+    response: { ok: true; navigationUrl?: string } | { error: string };
+  };
 };
 
 export type ContentMessageType = keyof ContentMessageMap;

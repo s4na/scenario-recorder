@@ -171,7 +171,7 @@ describe("background", () => {
     expect(response.scenarios[0]?.steps).toEqual([keptStep]);
   });
 
-  it("normalizes target domains without a URL scheme", async () => {
+  it("normalizes target origins without a URL scheme", async () => {
     await expect(sendMessage({
       type: "UPDATE_SETTINGS",
       payload: { allowedOrigins: ["localhost:3000"], recordingDetailLevel: "context" }
@@ -181,7 +181,7 @@ describe("background", () => {
     });
   });
 
-  it("stops reporting a tab as recording after it navigates outside target domains", async () => {
+  it("stops reporting a tab as recording after it navigates outside target origins", async () => {
     const state: RecorderState = {
       status: "recording",
       currentSteps: [],

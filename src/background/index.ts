@@ -22,6 +22,7 @@ import {
   createId,
   createStepId,
   formatTimestampForScenarioName,
+  getPrimarySelectorKey,
   sanitizeUrl,
   shouldReplaceFillStep,
   toIsoNow,
@@ -51,6 +52,7 @@ function withUpdatedStep(
 
   replaceAdjacentFillSteps(currentSteps);
   removeAdjacentDuplicateNavigationSteps(currentSteps);
+  removeAdjacentSubmitterClicks(currentSteps);
 
   return { ...state, currentSteps };
 }
@@ -71,6 +73,42 @@ function removeAdjacentDuplicateNavigationSteps(steps: ScenarioStep[]): void {
       index -= 1;
     }
   }
+}
+
+function removeAdjacentSubmitterClicks(steps: ScenarioStep[]): void {
+  for (let index = 1; index < steps.length; index += 1) {
+    if (isSubmitterClick(steps[index - 1], steps[index])) {
+      steps.splice(index - 1, 1);
+      index -= 1;
+    }
+  }
+}
+
+function isSubmitterClick(previous: ScenarioStep, next: ScenarioStep): boolean {
+  return (
+    previous.type === "click" &&
+    next.type === "submit" &&
+    targetSnapshotsMatch(previous.target, next.submitter)
+  );
+}
+
+function targetSnapshotsMatch(
+  first: ScenarioStep["target"],
+  second: ScenarioStep["target"],
+): boolean {
+  if (!first || !second) {
+    return false;
+  }
+  const firstSelector = getPrimarySelectorKey(first);
+  const secondSelector = getPrimarySelectorKey(second);
+  if (firstSelector && secondSelector) {
+    return firstSelector === secondSelector;
+  }
+  return (
+    (first.id !== undefined && first.id === second.id) ||
+    (first.name !== undefined && first.name === second.name) ||
+    (first.dataTestId !== undefined && first.dataTestId === second.dataTestId)
+  );
 }
 
 function isDuplicateNavigationStep(
@@ -100,7 +138,7 @@ async function startRecording(): Promise<RecorderState> {
     }
     const activeTab = await seedActiveTabUrl();
     if (!isAllowedBySettings(activeTab?.url, settings)) {
-      throw new Error("The active tab is outside the configured target domains.");
+      throw new Error("The active tab is outside the configured target origins.");
     }
     const recorderReady = await injectRecorderIntoTab(activeTab);
     if (!recorderReady) {
@@ -490,7 +528,7 @@ async function addAssertionStep(kind: "url" | "title"): Promise<RecorderState> {
     const rawUrl = tab.url ?? tabUrls.get(tabId) ?? "about:blank";
     const url = sanitizeUrl(rawUrl);
     if (!isAllowedBySettings(url, await getSettings())) {
-      throw new Error("The target tab is outside the configured target domains.");
+      throw new Error("The target tab is outside the configured target origins.");
     }
     const expected = kind === "url" ? url : tab.title ?? "";
     const nextState = withUpdatedStep(state, {
@@ -581,6 +619,28 @@ async function sendScenarioStep(tabId: number, step: ScenarioStep): Promise<void
   }
 }
 
+async function previewScenarioStepNavigation(
+  tabId: number,
+  step: ScenarioStep,
+): Promise<string | undefined> {
+  const response = await chrome.tabs.sendMessage(tabId, {
+    type: "PREVIEW_SCENARIO_STEP",
+    payload: { step },
+  });
+  if (response && typeof response === "object" && "error" in response) {
+    throw new Error(String(response.error));
+  }
+  if (
+    response &&
+    typeof response === "object" &&
+    "navigationUrl" in response &&
+    typeof response.navigationUrl === "string"
+  ) {
+    return response.navigationUrl;
+  }
+  return undefined;
+}
+
 async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; scenario: Scenario }> {
   return enqueueStateMutation(async () => {
     const currentState = await getRecorderState();
@@ -616,6 +676,10 @@ async function executeStoredScenario(scenarioId: string): Promise<{ ok: true; sc
         continue;
       }
       await assertTabUrlAllowed(tab.id, settings);
+      const navigationUrl = await previewScenarioStepNavigation(tab.id, step);
+      if (navigationUrl && isHttpUrl(navigationUrl)) {
+        assertScenarioUrlAllowed(navigationUrl, settings);
+      }
       await sendScenarioStep(tab.id, step);
       await waitForPossibleStepNavigation(tab.id, settings);
     }

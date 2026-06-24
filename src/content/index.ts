@@ -190,6 +190,40 @@ function setNativeValue(
   Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
 }
 
+function resolveNavigationUrl(step: ScenarioStep): string | undefined {
+  if (step.type !== "click" && step.type !== "submit") {
+    return undefined;
+  }
+  const target = findTarget(step.type === "submit" ? step.submitter ?? step.target : step.target);
+  if (!target) {
+    return undefined;
+  }
+  const anchor = target.closest("a[href]");
+  if (anchor instanceof HTMLAnchorElement) {
+    return anchor.href;
+  }
+  const form = getSubmitForm(step, target);
+  if (!form) {
+    return undefined;
+  }
+  const submitter = target instanceof HTMLButtonElement || target instanceof HTMLInputElement ? target : undefined;
+  const action = submitter?.getAttribute("formaction") || form.getAttribute("action") || location.href;
+  return new URL(action, location.href).href;
+}
+
+function getSubmitForm(step: ScenarioStep, target: HTMLElement): HTMLFormElement | undefined {
+  if (step.type === "submit") {
+    return target instanceof HTMLFormElement ? target : target.closest("form") ?? undefined;
+  }
+  if (!(target instanceof HTMLButtonElement || target instanceof HTMLInputElement)) {
+    return undefined;
+  }
+  if (target.type !== "submit") {
+    return undefined;
+  }
+  return target.form ?? undefined;
+}
+
 async function executeStep(step: ScenarioStep): Promise<void> {
   if (step.type === "assert") {
     const actual = step.assertion.kind === "title" ? document.title : sanitizeUrl(location.href);
@@ -268,6 +302,16 @@ chrome.runtime.onMessage.addListener(
             error: error instanceof Error ? error.message : "Failed to execute scenario step",
           });
         });
+      return true;
+    }
+    if (message.type === "PREVIEW_SCENARIO_STEP") {
+      try {
+        sendResponse({ ok: true, navigationUrl: resolveNavigationUrl(message.payload.step) });
+      } catch (error: unknown) {
+        sendResponse({
+          error: error instanceof Error ? error.message : "Failed to preview scenario step",
+        });
+      }
       return true;
     }
     if (message.type === "FLUSH_PENDING_INPUTS") {
