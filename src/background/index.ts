@@ -561,14 +561,12 @@ function normalizeOrigin(value: string): string {
   if (!trimmed) {
     return "";
   }
+  const candidate = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
   try {
-    return new URL(trimmed).origin;
+    const origin = new URL(candidate).origin;
+    return origin === "null" ? "" : origin;
   } catch {
-    try {
-      return new URL(`https://${trimmed}`).origin;
-    } catch {
-      return "";
-    }
+    return "";
   }
 }
 

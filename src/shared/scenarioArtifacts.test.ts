@@ -577,6 +577,15 @@ describe("scenario artifacts", () => {
         ...scenario,
         steps: [{
           ...scenario.steps[0],
+          assertion: { kind: "url", expected: "https://example.com" }
+        }]
+      })
+    ).toThrow("scenario-recorder/v1");
+    expect(() =>
+      parseScenarioImport({
+        ...scenario,
+        steps: [{
+          ...scenario.steps[0],
           target: {
             tagName: "button",
             selectorCandidates: [{ type: "unknown", value: "x", confidence: 1 }]

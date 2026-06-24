@@ -171,6 +171,13 @@ describe("background", () => {
     expect(response.scenarios[0]?.steps).toEqual([keptStep]);
   });
 
+  it("normalizes target domains without a URL scheme", async () => {
+    await expect(sendMessage({
+      type: "UPDATE_SETTINGS",
+      payload: { allowedOrigins: ["localhost:3000"] }
+    })).resolves.toEqual({ allowedOrigins: ["https://localhost:3000"] });
+  });
+
   it("stops reporting a tab as recording after it navigates outside target domains", async () => {
     const state: RecorderState = {
       status: "recording",

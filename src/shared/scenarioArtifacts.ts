@@ -214,6 +214,10 @@ export const SCENARIO_JSON_SCHEMA = {
           {
             if: { properties: { type: { const: "assert" } } },
             then: { required: ["assertion"] }
+          },
+          {
+            if: { properties: { type: { enum: ["click", "fill", "select", "submit", "navigation", "goto", "wait"] } } },
+            then: { not: { required: ["assertion"] } }
           }
         ],
         additionalProperties: true
@@ -648,7 +652,7 @@ function isValidStepAssertionForType(type: ScenarioStep["type"], value: unknown)
   if (type === "assert") {
     return isStepAssertion(value);
   }
-  return value === undefined || isStepAssertion(value);
+  return value === undefined;
 }
 
 function isStepAssertion(value: unknown): value is NonNullable<ScenarioStep["assertion"]> {
