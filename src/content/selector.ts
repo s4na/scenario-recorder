@@ -1,7 +1,8 @@
-import type { SelectorCandidate, TargetSnapshot } from "../shared/types";
+import type { SelectorCandidate, TargetContext, TargetSnapshot } from "../shared/types";
 import { shouldMaskValue } from "./masking";
 
 const MAX_TEXT_LENGTH = 120;
+const MAX_CONTEXT_ITEMS = 4;
 const SECRET_TEXT_PATTERNS = [
   /sk_(live|test)_[A-Za-z0-9_=-]+/gi,
   /bearer\s+[A-Za-z0-9._~+/=-]+/gi,
@@ -209,6 +210,10 @@ export function getSelectorCandidates(element: HTMLElement): SelectorCandidate[]
   return candidates;
 }
 
+type TargetSnapshotOptions = {
+  includeContext?: boolean;
+};
+
 function attributeCandidate(
   element: HTMLElement,
   attribute: "data-testid" | "data-test" | "data-cy",
@@ -218,7 +223,10 @@ function attributeCandidate(
   return value ? { type: attribute, value: cleanText(value) ?? "", confidence } : undefined;
 }
 
-export function createTargetSnapshot(element: HTMLElement): TargetSnapshot {
+export function createTargetSnapshot(
+  element: HTMLElement,
+  options: TargetSnapshotOptions = {},
+): TargetSnapshot {
   const rect = element.getBoundingClientRect();
   const text = shouldMaskValue(element) ? undefined : cleanText(element.innerText ?? element.textContent);
   return {
@@ -239,6 +247,68 @@ export function createTargetSnapshot(element: HTMLElement): TargetSnapshot {
       y: Math.round(rect.y),
       width: Math.round(rect.width),
       height: Math.round(rect.height)
-    }
+    },
+    context: options.includeContext ? getTargetContext(element) : undefined
   };
+}
+
+function getTargetContext(element: HTMLElement): TargetContext[] {
+  const context: TargetContext[] = [];
+  addContext(context, element, "self", 0);
+  let current = element.parentElement;
+  let depth = 1;
+  while (current && current !== document.body && context.length < MAX_CONTEXT_ITEMS) {
+    if (isMeaningfulContextElement(current)) {
+      addContext(context, current, "ancestor", depth);
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return context;
+}
+
+function addContext(
+  context: TargetContext[],
+  element: HTMLElement,
+  relation: TargetContext["relation"],
+  depth: number,
+): void {
+  const item: TargetContext = {
+    tagName: element.tagName.toLowerCase(),
+    role: getElementRole(element),
+    text: shouldMaskValue(element) ? undefined : cleanText(element.innerText ?? element.textContent),
+    ariaLabel: cleanText(element.getAttribute("aria-label")),
+    id: cleanText(element.id) || undefined,
+    className: cleanText(element.className) || undefined,
+    dataTestId: cleanText(element.getAttribute("data-testid")),
+    label: getElementLabel(element),
+    relation,
+    depth,
+  };
+  if (
+    item.text ||
+    item.ariaLabel ||
+    item.id ||
+    item.className ||
+    item.dataTestId ||
+    item.label ||
+    item.role ||
+    relation === "self"
+  ) {
+    context.push(item);
+  }
+}
+
+function isMeaningfulContextElement(element: HTMLElement): boolean {
+  const tagName = element.tagName.toLowerCase();
+  const role = getElementRole(element);
+  return (
+    ["article", "aside", "fieldset", "form", "li", "main", "nav", "section", "td", "th", "tr"].includes(tagName) ||
+    ["article", "cell", "form", "gridcell", "group", "listitem", "main", "navigation", "region", "row", "rowgroup"].includes(role ?? "") ||
+    element.hasAttribute("aria-label") ||
+    element.hasAttribute("data-testid") ||
+    element.hasAttribute("data-test") ||
+    element.hasAttribute("data-cy") ||
+    /\b(card|item|panel|row|section|table|list|dialog|modal)\b/i.test(element.className)
+  );
 }

@@ -49,6 +49,20 @@ export type TargetSnapshot = {
     width: number;
     height: number;
   };
+  context?: TargetContext[];
+};
+
+export type TargetContext = {
+  tagName: string;
+  role?: string;
+  text?: string;
+  ariaLabel?: string;
+  id?: string;
+  className?: string;
+  dataTestId?: string;
+  label?: string;
+  relation: "self" | "ancestor";
+  depth: number;
 };
 
 type ScenarioStepBase = {
@@ -120,7 +134,10 @@ export type ScenarioExport = {
 
 export type ScenarioRecorderSettings = {
   allowedOrigins: string[];
+  recordingDetailLevel: RecordingDetailLevel;
 };
+
+export type RecordingDetailLevel = "minimal" | "context";
 
 export type RecorderState = {
   status: RecordingStatus;

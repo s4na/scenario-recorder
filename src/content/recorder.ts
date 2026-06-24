@@ -1,5 +1,5 @@
 import type { RuntimeMessage } from "../shared/messages";
-import type { ScenarioStep } from "../shared/types";
+import type { RecordingDetailLevel, ScenarioStep } from "../shared/types";
 import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
 import { sanitizeUrl } from "./urlSanitizer";
@@ -39,6 +39,7 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let lastClickTarget: HTMLElement | undefined;
 let cachedRecording = false;
+let cachedRecordingDetailLevel: RecordingDetailLevel = "minimal";
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
 let recordingTargetRefreshSequence = 0;
@@ -60,6 +61,7 @@ async function refreshRecordingTargetCache(): Promise<void> {
     return;
   }
   cachedRecording = Boolean(response?.recording);
+  cachedRecordingDetailLevel = response?.recordingDetailLevel === "context" ? "context" : "minimal";
 }
 
 function markRecordingTargetUnavailable(error: unknown, refreshSequence: number): void {
@@ -75,7 +77,13 @@ function initializeRecordingCache(): void {
     markRecordingTargetUnavailable(error, initialRefresh);
   });
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes["scenarioRecorder.recorderState"]) {
+    if (
+      areaName !== "local" ||
+      (
+        !changes["scenarioRecorder.recorderState"] &&
+        !changes["scenarioRecorder.settings"]
+      )
+    ) {
       return;
     }
     const refreshSequence = recordingTargetRefreshSequence + 1;
@@ -87,6 +95,10 @@ function initializeRecordingCache(): void {
 
 function isRecording(): boolean {
   return cachedRecording;
+}
+
+function shouldRecordTargetContext(): boolean {
+  return cachedRecordingDetailLevel === "context";
 }
 
 function isDisabledElement(element: HTMLElement): boolean {
@@ -203,7 +215,7 @@ async function recordClick(
   await onStep({
     id: createStepId(),
     ...createBaseStep("click"),
-    target: createTargetSnapshot(target),
+    target: createTargetSnapshot(target, { includeContext: shouldRecordTargetContext() }),
   });
 }
 
@@ -283,7 +295,7 @@ async function recordSubmit(
   await onStep({
     id: createStepId(),
     ...createBaseStep("submit"),
-    target: createTargetSnapshot(form),
+    target: createTargetSnapshot(form, { includeContext: shouldRecordTargetContext() }),
   });
 }
 
@@ -384,7 +396,7 @@ function scheduleFill(
   const step: ScenarioStep = {
     id: createStepId(),
     ...createBaseStep("fill", context),
-    target: createTargetSnapshot(element),
+    target: createTargetSnapshot(element, { includeContext: shouldRecordTargetContext() }),
     value,
   };
 
@@ -421,7 +433,7 @@ function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
     onStep({
       id: createStepId(),
       ...createBaseStep("select"),
-      target: createTargetSnapshot(element),
+      target: createTargetSnapshot(element, { includeContext: shouldRecordTargetContext() }),
       value: maskValue(element, getInputValue(element)),
     }),
   ).catch((error: unknown) => {

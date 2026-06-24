@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentMessage } from "../shared/messages";
 import { sendRuntimeMessage } from "../shared/messages";
-import { parseScenarioImport, scenarioToJsonl, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
+import { parseScenarioImportText, scenarioToJsonl, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
 import type { RecorderState, Scenario, ScenarioRecorderSettings } from "../shared/types";
 import { downloadJson, downloadText, formatTimestampForFile, sanitizeFilePart } from "../shared/utils";
 import { playwrightDownloadPayload } from "./downloads";
@@ -13,7 +13,8 @@ const EMPTY_STATE: RecorderState = {
 };
 
 const EMPTY_SETTINGS: ScenarioRecorderSettings = {
-  allowedOrigins: []
+  allowedOrigins: [],
+  recordingDetailLevel: "minimal"
 };
 
 type Notice = {
@@ -103,8 +104,7 @@ export default function App() {
 
   async function importScenarioFile(file: File): Promise<void> {
     const text = await file.text();
-    const payload = JSON.parse(text) as unknown;
-    const importedScenarios = parseScenarioImport(payload);
+    const importedScenarios = parseScenarioImportText(text);
     const response = await sendRuntimeMessage<"IMPORT_SCENARIOS">({
       type: "IMPORT_SCENARIOS",
       payload: { scenarios: importedScenarios }
@@ -270,7 +270,7 @@ export default function App() {
             全シナリオを一括エクスポート
           </button>
           <button disabled={isBusy} onClick={() => importInputRef.current?.click()}>
-            シナリオJSONをインポート
+            シナリオJSON/JSONLをインポート
           </button>
           <button
             disabled={isBusy}
@@ -284,7 +284,7 @@ export default function App() {
             ref={importInputRef}
             className="hiddenInput"
             type="file"
-            accept="application/json,.json"
+            accept="application/json,application/x-ndjson,.json,.jsonl"
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
@@ -320,7 +320,8 @@ export default function App() {
               const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
                 type: "UPDATE_SETTINGS",
                 payload: {
-                  allowedOrigins: allowedOriginsText.split("\n")
+                  allowedOrigins: allowedOriginsText.split("\n"),
+                  recordingDetailLevel: settings.recordingDetailLevel
                 }
               });
               setSettings(nextSettings);
@@ -331,6 +332,28 @@ export default function App() {
         >
           対象ドメインを保存
         </button>
+        <label className="field">
+          <span>記録の詳細度</span>
+          <select
+            value={settings.recordingDetailLevel}
+            onChange={(event) =>
+              runAction(async () => {
+                const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
+                  type: "UPDATE_SETTINGS",
+                  payload: {
+                    allowedOrigins: settings.allowedOrigins,
+                    recordingDetailLevel: event.target.value === "context" ? "context" : "minimal"
+                  }
+                });
+                setSettings(nextSettings);
+              }, "記録の詳細度を保存しました")
+            }
+            disabled={isBusy}
+          >
+            <option value="minimal">minimal: 対象要素だけ</option>
+            <option value="context">context: 周辺文脈も保存</option>
+          </select>
+        </label>
       </section>
 
       <section className="section">
@@ -404,11 +427,11 @@ export default function App() {
                   <small>更新: {new Date(scenario.updatedAt).toLocaleString()}</small>
                 </div>
                 <div className="scenarioActions">
-                  <button onClick={() => downloadJson(scenarioFileName(scenario), scenario)}>
-                    JSONエクスポート
-                  </button>
                   <button onClick={() => downloadText(`${sanitizeFilePart(scenario.name)}.jsonl`, scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
-                    JSONL
+                    JSONLエクスポート
+                  </button>
+                  <button onClick={() => downloadJson(scenarioFileName(scenario), scenario)}>
+                    JSON
                   </button>
                   <button
                     onClick={() =>

@@ -13,7 +13,8 @@ const DEFAULT_RECORDER_STATE: RecorderState = {
 };
 
 const DEFAULT_SETTINGS: ScenarioRecorderSettings = {
-  allowedOrigins: []
+  allowedOrigins: [],
+  recordingDetailLevel: "minimal"
 };
 
 function getChromeStorage(): chrome.storage.StorageArea {
@@ -93,9 +94,11 @@ function isNewerScenario(candidate: Scenario, current: Scenario): boolean {
 
 export async function getSettings(): Promise<ScenarioRecorderSettings> {
   const result = await getChromeStorage().get(STORAGE_KEYS.SETTINGS);
+  const stored = result[STORAGE_KEYS.SETTINGS] as Partial<ScenarioRecorderSettings> | undefined;
   return {
     ...DEFAULT_SETTINGS,
-    ...(result[STORAGE_KEYS.SETTINGS] as ScenarioRecorderSettings | undefined)
+    ...stored,
+    recordingDetailLevel: stored?.recordingDetailLevel === "context" ? "context" : "minimal"
   };
 }
 

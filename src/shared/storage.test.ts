@@ -65,10 +65,16 @@ describe("storage", () => {
   it("persists target-domain settings and defaults to no restrictions", async () => {
     storage.clear();
 
-    await expect(getSettings()).resolves.toEqual({ allowedOrigins: [] });
+    await expect(getSettings()).resolves.toEqual({
+      allowedOrigins: [],
+      recordingDetailLevel: "minimal"
+    });
 
-    await setSettings({ allowedOrigins: ["https://example.com"] });
+    await setSettings({ allowedOrigins: ["https://example.com"], recordingDetailLevel: "context" });
 
-    await expect(getSettings()).resolves.toEqual({ allowedOrigins: ["https://example.com"] });
+    await expect(getSettings()).resolves.toEqual({
+      allowedOrigins: ["https://example.com"],
+      recordingDetailLevel: "context"
+    });
   });
 });

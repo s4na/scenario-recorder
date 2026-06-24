@@ -1,4 +1,4 @@
-import type { Scenario, ScenarioStep, SelectorCandidate, SelectorCandidateType, TargetSnapshot } from "./types";
+import type { RecordingSession, Scenario, ScenarioStep, SelectorCandidate, SelectorCandidateType, TargetContext, TargetSnapshot } from "./types";
 
 const MASK_VARIABLES: Record<string, { name: string; secret: boolean }> = {
   "{{PASSWORD}}": { name: "password", secret: true },
@@ -185,7 +185,27 @@ export const SCENARIO_JSON_SCHEMA = {
                   width: { type: "number" },
                   height: { type: "number" }
                 }
-              }
+              },
+              context: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["tagName", "relation", "depth"],
+                  properties: {
+                    tagName: { type: "string" },
+                    role: { type: "string" },
+                    text: { type: "string" },
+                    ariaLabel: { type: "string" },
+                    id: { type: "string" },
+                    className: { type: "string" },
+                    dataTestId: { type: "string" },
+                    label: { type: "string" },
+                    relation: { enum: ["self", "ancestor"] },
+                    depth: { type: "number" }
+                  },
+                  additionalProperties: true
+                }
+              },
             },
             additionalProperties: true
           },
@@ -243,7 +263,58 @@ export const SCENARIO_JSON_SCHEMA = {
 /* oxlint-enable unicorn/no-thenable */
 
 export function scenarioToJsonl(scenario: Scenario): string {
-  return scenario.steps.map((step) => JSON.stringify(step)).join("\n");
+  return scenarioToJsonlLines(scenario).map((line) => JSON.stringify(line)).join("\n");
+}
+
+type ScenarioJsonlLine =
+  | {
+      kind: "meta";
+      schemaVersion: "scenario-recorder/jsonl/v1";
+      scenarioSchemaVersion: Scenario["schemaVersion"];
+      id: string;
+      name: string;
+      description?: string;
+      tags?: string[];
+      createdAt: string;
+      updatedAt: string;
+      startUrl?: string;
+      baseUrl?: string;
+      variables?: Scenario["variables"];
+      metadata: Scenario["metadata"];
+    }
+  | ({ kind: "session"; index: number } & RecordingSession)
+  | ({ kind: "step"; index: number } & Exclude<ScenarioStep, { type: "assert" }>)
+  | ({ kind: "assertion"; index: number } & Extract<ScenarioStep, { type: "assert" }>);
+
+function scenarioToJsonlLines(scenario: Scenario): ScenarioJsonlLine[] {
+  return [
+    {
+      kind: "meta",
+      schemaVersion: "scenario-recorder/jsonl/v1",
+      scenarioSchemaVersion: scenario.schemaVersion,
+      id: scenario.id,
+      name: scenario.name,
+      description: scenario.description,
+      tags: scenario.tags,
+      createdAt: scenario.createdAt,
+      updatedAt: scenario.updatedAt,
+      startUrl: scenario.startUrl,
+      baseUrl: scenario.baseUrl,
+      variables: scenario.variables,
+      metadata: scenario.metadata,
+    },
+    ...scenario.recording.sessions.map((session, index) => ({
+      kind: "session" as const,
+      index,
+      ...session,
+    })),
+    ...scenario.steps.map((step, index): ScenarioJsonlLine => {
+      if (step.type === "assert") {
+        return { kind: "assertion", index, ...step };
+      }
+      return { kind: "step", index, ...step };
+    }),
+  ];
 }
 
 export type PlaywrightGenerationOptions = {
@@ -327,6 +398,65 @@ export function parseScenarioImport(value: unknown): Scenario[] {
     return value.map(normalizeScenario);
   }
   return [normalizeScenario(value)];
+}
+
+export function parseScenarioImportText(text: string): Scenario[] {
+  try {
+    return parseScenarioImport(JSON.parse(text) as unknown);
+  } catch (jsonError) {
+    try {
+      return [parseScenarioJsonl(text)];
+    } catch (jsonlError) {
+      if (text.split(/\r?\n/).filter((line) => line.trim()).length > 1) {
+        throw jsonlError instanceof Error ? jsonlError : new Error("シナリオJSONLを読み込めませんでした。");
+      }
+      throw jsonError instanceof Error ? jsonError : new Error("シナリオを読み込めませんでした。");
+    }
+  }
+}
+
+function parseScenarioJsonl(text: string): Scenario {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as unknown);
+  const [meta, ...events] = lines;
+  if (!isScenarioJsonlMeta(meta)) {
+    throw new Error("scenario-recorder/jsonl/v1 の先頭meta行を含むJSONLを選択してください。");
+  }
+  const sessions: RecordingSession[] = [];
+  const steps: ScenarioStep[] = [];
+  for (const [offset, event] of events.entries()) {
+    const lineNumber = offset + 2;
+    if (isScenarioJsonlSession(event)) {
+      const { kind: _kind, index: _index, ...session } = event;
+      sessions.push(session);
+      continue;
+    }
+    if (isScenarioJsonlStep(event)) {
+      const { kind: _kind, index: _index, ...step } = event;
+      steps.push(step);
+      continue;
+    }
+    throw new Error(`scenario-recorder/jsonl/v1 の${lineNumber}行目が不正です。`);
+  }
+  return normalizeScenario({
+    schemaVersion: "scenario-recorder/v1",
+    id: meta.id,
+    name: meta.name,
+    description: meta.description,
+    tags: meta.tags,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+    startUrl: meta.startUrl,
+    baseUrl: meta.baseUrl,
+    variables: meta.variables,
+    recording: { sessions },
+    steps,
+    assertions: [],
+    metadata: meta.metadata,
+  });
 }
 
 type PlaywrightContext = {
@@ -604,6 +734,53 @@ function isScenarioExport(value: unknown): value is { schemaVersion: "scenario-r
   );
 }
 
+function isScenarioJsonlMeta(value: unknown): value is Extract<ScenarioJsonlLine, { kind: "meta" }> {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  return (
+    value.kind === "meta" &&
+    value.schemaVersion === "scenario-recorder/jsonl/v1" &&
+    value.scenarioSchemaVersion === "scenario-recorder/v1" &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    isIsoDateString(value.createdAt) &&
+    isIsoDateString(value.updatedAt) &&
+    isOptionalString(value.description) &&
+    isOptionalString(value.startUrl) &&
+    isOptionalString(value.baseUrl) &&
+    isOptionalStringArray(value.tags) &&
+    isOptionalVariables(value.variables) &&
+    isMetadata(value.metadata)
+  );
+}
+
+function isScenarioJsonlSession(value: unknown): value is Extract<ScenarioJsonlLine, { kind: "session" }> {
+  return (
+    isPlainObject(value) &&
+    value.kind === "session" &&
+    typeof value.index === "number" &&
+    isOptionalIsoDateString(value.startedAt) &&
+    isOptionalIsoDateString(value.pausedAt) &&
+    isOptionalIsoDateString(value.resumedAt) &&
+    isOptionalIsoDateString(value.stoppedAt)
+  );
+}
+
+function isScenarioJsonlStep(value: unknown): value is Extract<ScenarioJsonlLine, { kind: "step" | "assertion" }> {
+  if (!isPlainObject(value) || (value.kind !== "step" && value.kind !== "assertion") || typeof value.index !== "number") {
+    return false;
+  }
+  const { kind: _kind, index: _index, ...step } = value;
+  if (_kind === "assertion" && step.type !== "assert") {
+    return false;
+  }
+  if (_kind === "step" && step.type === "assert") {
+    return false;
+  }
+  return isScenarioStep(step);
+}
+
 function normalizeScenario(value: unknown): Scenario {
   if (!isScenario(value)) {
     throw new Error("scenario-recorder/v1 のJSONを選択してください。");
@@ -723,7 +900,27 @@ function isTargetSnapshot(value: unknown): value is TargetSnapshot {
   return (
     typeof target.tagName === "string" &&
     Array.isArray(target.selectorCandidates) &&
-    target.selectorCandidates.every(isSelectorCandidate)
+    target.selectorCandidates.every(isSelectorCandidate) &&
+    (target.context === undefined ||
+      (Array.isArray(target.context) && target.context.every(isTargetContext)))
+  );
+}
+
+function isTargetContext(value: unknown): value is TargetContext {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  return (
+    typeof value.tagName === "string" &&
+    (value.relation === "self" || value.relation === "ancestor") &&
+    typeof value.depth === "number" &&
+    isOptionalString(value.role) &&
+    isOptionalString(value.text) &&
+    isOptionalString(value.ariaLabel) &&
+    isOptionalString(value.id) &&
+    isOptionalString(value.className) &&
+    isOptionalString(value.dataTestId) &&
+    isOptionalString(value.label)
   );
 }
 
@@ -806,4 +1003,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isIsoDateString(value: unknown): value is string {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+function isOptionalIsoDateString(value: unknown): value is string | undefined {
+  return value === undefined || isIsoDateString(value);
 }

@@ -39,11 +39,13 @@ describe("popup downloads", () => {
   it("passes target-domain settings into Playwright generation", () => {
     expect(() =>
       playwrightDownloadPayload(secretScenario, {
-        allowedOrigins: ["https://app.example"]
+        allowedOrigins: ["https://app.example"],
+        recordingDetailLevel: "minimal"
       })
     ).toThrow("outside target domain");
     expect(playwrightDownloadPayload(secretScenario, {
-      allowedOrigins: ["https://attacker.example"]
+      allowedOrigins: ["https://attacker.example"],
+      recordingDetailLevel: "minimal"
     })).toMatchObject({
       filename: "secret-login.spec.ts",
       type: "text/typescript;charset=utf-8"

@@ -34,7 +34,7 @@ export type MessageMap = {
   };
   IS_RECORDING_TARGET: {
     payload: undefined;
-    response: { recording: boolean };
+    response: { recording: boolean; recordingDetailLevel: ScenarioRecorderSettings["recordingDetailLevel"] };
   };
   GET_RECORDING_OVERLAY_STATE: {
     payload: undefined;

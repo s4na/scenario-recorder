@@ -552,6 +552,7 @@ async function updateStoredSettings(
 ): Promise<ScenarioRecorderSettings> {
   const normalized = {
     allowedOrigins: Array.from(new Set(settings.allowedOrigins.map(normalizeOrigin).filter(Boolean))),
+    recordingDetailLevel: settings.recordingDetailLevel === "context" ? "context" as const : "minimal" as const,
   };
   await setSettings(normalized);
   return normalized;
@@ -571,16 +572,19 @@ function normalizeOrigin(value: string): string {
   }
 }
 
-async function isRecordingTarget(tab: chrome.tabs.Tab | undefined): Promise<{ recording: boolean }> {
+async function isRecordingTarget(
+  tab: chrome.tabs.Tab | undefined,
+): Promise<{ recording: boolean; recordingDetailLevel: ScenarioRecorderSettings["recordingDetailLevel"] }> {
   const tabId = tab?.id;
+  const settings = await getSettings();
   if (tabId === undefined) {
-    return { recording: false };
+    return { recording: false, recordingDetailLevel: settings.recordingDetailLevel };
   }
   const state = await getRecorderState();
-  const settings = await getSettings();
   const url = tab?.url ?? tabUrls.get(tabId);
   return {
     recording: state.status === "recording" && state.targetTabId === tabId && isAllowedBySettings(url, settings),
+    recordingDetailLevel: settings.recordingDetailLevel,
   };
 }
 

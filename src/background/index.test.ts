@@ -174,8 +174,11 @@ describe("background", () => {
   it("normalizes target domains without a URL scheme", async () => {
     await expect(sendMessage({
       type: "UPDATE_SETTINGS",
-      payload: { allowedOrigins: ["localhost:3000"] }
-    })).resolves.toEqual({ allowedOrigins: ["https://localhost:3000"] });
+      payload: { allowedOrigins: ["localhost:3000"], recordingDetailLevel: "context" }
+    })).resolves.toEqual({
+      allowedOrigins: ["https://localhost:3000"],
+      recordingDetailLevel: "context"
+    });
   });
 
   it("stops reporting a tab as recording after it navigates outside target domains", async () => {
@@ -202,7 +205,7 @@ describe("background", () => {
     await expect(sendMessage(
       { type: "IS_RECORDING_TARGET" },
       { tab: { id: 1 } as chrome.tabs.Tab },
-    )).resolves.toEqual({ recording: true });
+    )).resolves.toEqual({ recording: true, recordingDetailLevel: "minimal" });
 
     navigationListener({
       tabId: 1,
@@ -235,7 +238,7 @@ describe("background", () => {
     await expect(sendMessage(
       { type: "IS_RECORDING_TARGET" },
       { tab: { id: 1 } as chrome.tabs.Tab },
-    )).resolves.toEqual({ recording: false });
+    )).resolves.toEqual({ recording: false, recordingDetailLevel: "minimal" });
   });
 
   it("returns recording summary details for the target tab overlay", async () => {

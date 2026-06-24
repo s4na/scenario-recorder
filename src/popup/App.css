@@ -18,6 +18,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -131,6 +132,7 @@ h2 {
 }
 
 .field input,
+.field select,
 .field textarea {
   width: 100%;
   padding: 9px 10px;
@@ -146,6 +148,7 @@ h2 {
 }
 
 .field input:focus,
+.field select:focus,
 .field textarea:focus {
   outline: 2px solid #93c5fd;
   outline-offset: 1px;

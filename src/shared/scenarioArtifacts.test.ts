@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Scenario } from "./types";
-import { parseScenarioImport, scenarioToJsonl, scenarioToPlaywright, withDerivedSecretVariables } from "./scenarioArtifacts";
+import { parseScenarioImport, parseScenarioImportText, scenarioToJsonl, scenarioToPlaywright, withDerivedSecretVariables } from "./scenarioArtifacts";
 
 const scenario: Scenario = {
   schemaVersion: "scenario-recorder/v1",
@@ -212,9 +212,104 @@ const scenario: Scenario = {
 
 describe("scenario artifacts", () => {
   it("exports steps as JSONL", () => {
-    expect(scenarioToJsonl(scenario).split("\n").map((line) => JSON.parse(line) as unknown)).toEqual(
-      scenario.steps
+    const lines = scenarioToJsonl(scenario).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(lines[0]).toMatchObject({
+      kind: "meta",
+      schemaVersion: "scenario-recorder/jsonl/v1",
+      scenarioSchemaVersion: "scenario-recorder/v1",
+      id: scenario.id,
+      name: scenario.name
+    });
+    expect(lines.slice(1).map((line) => [line.kind, line.index, line.id, line.type])).toEqual(
+      scenario.steps.map((step, index) => [
+        step.type === "assert" ? "assertion" : "step",
+        index,
+        step.id,
+        step.type
+      ])
     );
+  });
+
+  it("imports JSONL scenarios back into scenario objects", () => {
+    expect(parseScenarioImportText(scenarioToJsonl(scenario))).toEqual([{
+      ...scenario,
+      description: "",
+      tags: [],
+    }]);
+  });
+
+  it("exports and imports JSONL recording sessions", () => {
+    const scenarioWithSession: Scenario = {
+      ...scenario,
+      recording: {
+        sessions: [{
+          startedAt: "2026-06-23T10:00:00.000Z",
+          pausedAt: "2026-06-23T10:01:00.000Z",
+          resumedAt: "2026-06-23T10:02:00.000Z",
+          stoppedAt: "2026-06-23T10:03:00.000Z",
+        }],
+      },
+      steps: [],
+    };
+    const lines = scenarioToJsonl(scenarioWithSession)
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(lines[1]).toMatchObject({
+      kind: "session",
+      index: 0,
+      startedAt: "2026-06-23T10:00:00.000Z",
+    });
+    expect(parseScenarioImportText(scenarioToJsonl(scenarioWithSession))[0].recording.sessions).toEqual(
+      scenarioWithSession.recording.sessions,
+    );
+  });
+
+  it("preserves JSONL event line order when importing scenarios", () => {
+    const [metaLine, firstStepLine, secondStepLine] = scenarioToJsonl({
+      ...scenario,
+      steps: scenario.steps.slice(0, 2),
+    }).split("\n");
+    const firstStep = JSON.parse(firstStepLine) as Record<string, unknown>;
+    const secondStep = JSON.parse(secondStepLine) as Record<string, unknown>;
+    const imported = parseScenarioImportText([
+      metaLine,
+      JSON.stringify({ ...secondStep, index: 0 }),
+      JSON.stringify({ ...firstStep, index: 1 }),
+    ].join("\n"));
+
+    expect(imported[0].steps.map((step) => step.id)).toEqual(["step_1", "step_0"]);
+  });
+
+  it("rejects invalid JSONL event lines instead of dropping them", () => {
+    const [metaLine, stepLine] = scenarioToJsonl({
+      ...scenario,
+      steps: scenario.steps.slice(0, 1),
+    }).split("\n");
+    const invalidStep = JSON.parse(stepLine) as Record<string, unknown>;
+    delete invalidStep.id;
+
+    expect(() => parseScenarioImportText([
+      metaLine,
+      JSON.stringify(invalidStep),
+    ].join("\n"))).toThrow("scenario-recorder/jsonl/v1 の2行目が不正です。");
+    expect(() => parseScenarioImportText([
+      metaLine,
+      JSON.stringify({ kind: "note", index: 0, text: "unsupported" }),
+    ].join("\n"))).toThrow("scenario-recorder/jsonl/v1 の2行目が不正です。");
+    expect(() => parseScenarioImportText([
+      metaLine,
+      JSON.stringify({ kind: "session", index: 0, startedAt: 123 }),
+    ].join("\n"))).toThrow("scenario-recorder/jsonl/v1 の2行目が不正です。");
+    expect(() => parseScenarioImportText([
+      metaLine,
+      JSON.stringify({ ...scenario.steps[0], kind: "assertion", index: 0 }),
+    ].join("\n"))).toThrow("scenario-recorder/jsonl/v1 の2行目が不正です。");
+    expect(() => parseScenarioImportText([
+      metaLine,
+      JSON.stringify({ ...scenario.steps[2], kind: "step", index: 0 }),
+    ].join("\n"))).toThrow("scenario-recorder/jsonl/v1 の2行目が不正です。");
   });
 
   it("generates Playwright code from selectors and assertions", () => {
