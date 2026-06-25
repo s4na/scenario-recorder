@@ -543,7 +543,7 @@ function recordSelection(onStep: StepHandler): void {
     }),
   ).then(() => {
     showSelectionFeedback(selected.rects);
-  ).catch((error: unknown) => {
+  }).catch((error: unknown) => {
     console.warn("Scenario Recorder failed to record text selection.", error);
   });
 }
