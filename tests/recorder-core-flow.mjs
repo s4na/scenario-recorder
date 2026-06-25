@@ -33,86 +33,136 @@ try {
 
   const scenarioDefinitions = [
     {
-      id: "hono_route_deploy_flow",
-      name: "Hono route deploy records repeated button, textarea, and environment select",
+      id: "survey_workspace_signup_and_publish_flow",
+      name: "Survey workspace signup records repeated signup button, form fields, and publish flow",
       async run() {
-        await page.getByTestId("admin-api-route-card").getByRole("button", { name: "Deploy" }).click();
-        await page.getByLabel("Release note").fill("Ship admin audit middleware");
-        await chooseSelectOption(page, "Environment", 2);
+        await page.getByTestId("research-workspace-card").getByRole("button", { name: "Create account" }).click();
+        await page.getByLabel("User name").fill("Sana Researcher");
+        await page.getByLabel("Work email").fill("sana@example.test");
+        await chooseSelectOption(page, "Primary goal", 1);
+        await page.getByRole("button", { name: "Continue" }).click();
+        await page.getByLabel("Survey title").fill("Onboarding interview");
+        await page.getByLabel("Question prompt").fill("What made setup feel easier or harder?");
+        await chooseSelectOption(page, "Answer type", 2);
+        await page.getByRole("button", { name: "Publish form" }).click();
       },
       async assertPageState() {
-        const selectedRoute = await page.locator("#selected-route").textContent();
-        assert(selectedRoute === "Admin API", `Expected Playwright to deploy Admin API, got ${selectedRoute}.`);
+        const selectedWorkspace = await page.locator("#selected-workspace").textContent();
+        const workspaceOwner = await page.locator("#workspace-owner").textContent();
+        const publishedStatus = await page.locator("#published-status").textContent();
+        assert(
+          selectedWorkspace === "Research workspace",
+          `Expected Playwright to select Research workspace, got ${selectedWorkspace}.`,
+        );
+        assert(
+          workspaceOwner === "Sana Researcher's research workspace",
+          `Expected workspace owner to be set from signup, got ${workspaceOwner}.`,
+        );
+        assert(
+          publishedStatus === "Onboarding interview is live",
+          `Expected survey to be published, got ${publishedStatus}.`,
+        );
       },
       assertSteps(steps) {
         assertStepTypes(steps, ["click", "fill", "select"]);
-        const deployClick = steps.find((step) => step.type === "click");
-        assert(
-          deployClick?.target?.contextSummary?.heading === "Admin API",
-          "Core recorder did not keep the clicked route card heading context.",
-        );
-        assertSameLabel(deployClick, "Deploy", 2, 2);
-        assert(
-          steps.some((step) => step.type === "fill" && step.value === "Ship admin audit middleware" && step.target?.label === "Release note"),
-          "Core recorder did not record the release note fill with its label.",
+        const createAccountClick = steps.find(
+          (step) => step.type === "click" && step.target?.contextSummary?.sameLabel?.value === "Create account",
         );
         assert(
-          steps.some((step) => step.type === "select" && step.value !== undefined),
-          "Core recorder did not record a replayable environment select value.",
+          createAccountClick?.target?.contextSummary?.heading === "Research workspace",
+          "Core recorder did not keep the clicked workspace card heading context.",
+        );
+        assertSameLabel(createAccountClick, "Create account", 2, 2);
+        assert(
+          steps.some((step) => step.type === "fill" && step.value === "Sana Researcher" && step.target?.label === "User name"),
+          "Core recorder did not record the user name fill with its label.",
+        );
+        assert(
+          steps.some(
+            (step) =>
+              step.type === "fill" &&
+              step.value === "What made setup feel easier or harder?" &&
+              step.target?.label === "Question prompt",
+          ),
+          "Core recorder did not record the question prompt textarea fill with its label.",
+        );
+        assert(
+          steps.some((step) => step.type === "select" && step.value === "product-research" && step.target?.label === "Primary goal"),
+          "Core recorder did not record a replayable primary goal select value.",
+        );
+        assert(
+          steps.some((step) => step.type === "select" && step.value === "long-text" && step.target?.label === "Answer type"),
+          "Core recorder did not record a replayable answer type select value.",
         );
       },
       assertSpec(specText) {
         assert(
-          specText.includes("page.getByRole(\"button\", { name: \"Deploy\" }).nth(1).click()"),
-          "Generated Playwright did not disambiguate the repeated Deploy button.",
+          specText.includes("page.getByRole(\"button\", { name: \"Create account\" }).nth(1).click()"),
+          "Generated Playwright did not disambiguate the repeated Create account button.",
         );
         assert(
-          specText.includes(".fill(\"Ship admin audit middleware\")"),
-          "Generated Playwright did not include the release note fill.",
+          specText.includes(".fill(\"What made setup feel easier or harder?\")"),
+          "Generated Playwright did not include the question prompt textarea fill.",
         );
-        assert(specText.includes(".selectOption("), "Generated Playwright did not include the environment select.");
+        assert(specText.includes(".selectOption("), "Generated Playwright did not include the signup or builder selects.");
       },
     },
     {
-      id: "hono_customer_edit_flow",
-      name: "Hono customer edit records repeated table button, input, and support select",
+      id: "survey_response_and_results_flow",
+      name: "Survey response records repeated answer button, response fields, and results update",
       async run() {
-        await page.getByTestId("northstar-customer-row").getByRole("button", { name: "Edit" }).click();
-        await page.getByLabel("Account alias").fill("northstar-enterprise");
-        await chooseSelectOption(page, "Support tier", 2);
+        await page.getByTestId("product-feedback-form-card").getByRole("button", { name: "Answer" }).click();
+        await page.getByLabel("Respondent name").fill("Mina Park");
+        await chooseSelectOption(page, "Satisfaction", 2);
+        await page.getByLabel("Feedback").fill("The guided setup made the first survey easy to launch.");
+        await page.getByRole("button", { name: "Submit answer" }).click();
       },
       async assertPageState() {
-        const selectedCustomer = await page.locator("#selected-customer").textContent();
-        assert(selectedCustomer === "Northstar Labs", `Expected Playwright to edit Northstar Labs, got ${selectedCustomer}.`);
+        const selectedForm = await page.locator("#selected-form").textContent();
+        const responseCount = await page.locator("#response-count").textContent();
+        const lastResponse = await page.locator("#last-response").textContent();
+        assert(selectedForm === "Product feedback", `Expected Playwright to answer Product feedback, got ${selectedForm}.`);
+        assert(responseCount === "1 response", `Expected one recorded response, got ${responseCount}.`);
+        assert(lastResponse === "Mina Park submitted very-happy", `Expected last response summary, got ${lastResponse}.`);
       },
       assertSteps(steps) {
         assertStepTypes(steps, ["click", "fill", "select"]);
-        const editClick = steps.find((step) => step.type === "click");
-        assert(
-          editClick?.target?.contextSummary?.nearbyText?.some((text) => text.includes("Northstar Labs")) ||
-            editClick?.target?.contextSummary?.heading === "Northstar Labs",
-          "Core recorder did not keep row context for the clicked customer Edit button.",
-        );
-        assertSameLabel(editClick, "Edit", 2, 2);
-        assert(
-          steps.some((step) => step.type === "fill" && step.value === "northstar-enterprise" && step.target?.label === "Account alias"),
-          "Core recorder did not record the account alias fill with its label.",
+        const answerClick = steps.find(
+          (step) => step.type === "click" && step.target?.contextSummary?.sameLabel?.value === "Answer",
         );
         assert(
-          steps.some((step) => step.type === "select" && step.value !== undefined),
-          "Core recorder did not record a replayable support tier select value.",
+          answerClick?.target?.contextSummary?.heading === "Product feedback",
+          "Core recorder did not keep the clicked product feedback card heading context.",
+        );
+        assertSameLabel(answerClick, "Answer", 2, 2);
+        assert(
+          steps.some((step) => step.type === "fill" && step.value === "Mina Park" && step.target?.label === "Respondent name"),
+          "Core recorder did not record the respondent name fill with its label.",
+        );
+        assert(
+          steps.some(
+            (step) =>
+              step.type === "fill" &&
+              step.value === "The guided setup made the first survey easy to launch." &&
+              step.target?.label === "Feedback",
+          ),
+          "Core recorder did not record the feedback textarea fill with its label.",
+        );
+        assert(
+          steps.some((step) => step.type === "select" && step.value === "very-happy" && step.target?.label === "Satisfaction"),
+          "Core recorder did not record a replayable satisfaction select value.",
         );
       },
       assertSpec(specText) {
         assert(
-          specText.includes("page.getByRole(\"button\", { name: \"Edit\" }).nth(1).click()"),
-          "Generated Playwright did not disambiguate the repeated Edit button.",
+          specText.includes("page.getByRole(\"button\", { name: \"Answer\" }).nth(1).click()"),
+          "Generated Playwright did not disambiguate the repeated Answer button.",
         );
         assert(
-          specText.includes(".fill(\"northstar-enterprise\")"),
-          "Generated Playwright did not include the account alias fill.",
+          specText.includes(".fill(\"The guided setup made the first survey easy to launch.\")"),
+          "Generated Playwright did not include the feedback textarea fill.",
         );
-        assert(specText.includes(".selectOption("), "Generated Playwright did not include the support tier select.");
+        assert(specText.includes(".selectOption("), "Generated Playwright did not include the satisfaction select.");
       },
     },
   ];
