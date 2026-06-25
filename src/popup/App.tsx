@@ -74,7 +74,7 @@ function describeStep(step: ScenarioStep): string {
     case "assert":
       return step.assertion?.kind === "title" ? "タイトルを確認" : "URLを確認";
     default:
-      return step.type;
+      return "操作を記録";
   }
 }
 
