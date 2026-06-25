@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
 jobs:
   lint-workflows:
     runs-on: ubuntu-latest

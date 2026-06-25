@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -15,6 +15,7 @@ const fixtureServer = await startFixtureServer();
 const fixtureOrigin = `http://127.0.0.1:${fixtureServer.port}`;
 const userDataDir = mkdtempSync(`${tmpdir()}/scenario-recorder-e2e-`);
 const downloadDir = mkdtempSync(`${tmpdir()}/scenario-recorder-downloads-`);
+const generatedPlaywrightDir = mkdtempSync(resolve(".tmp-generated-playwright-"));
 let browser;
 
 try {
@@ -120,11 +121,17 @@ try {
       zipEntryNames.filter((entry) => entry.endsWith(".spec.ts")).length === 2,
     "Downloaded ZIP does not include JSONL and Playwright files for each saved record.",
   );
+  const runnableSpecEntry = Object.entries(zipEntries).find(
+    ([entryName, text]) => entryName.endsWith(".spec.ts") && text.includes("waitForURL"),
+  );
+  assert(runnableSpecEntry !== undefined, "Downloaded ZIP does not include a runnable navigation Playwright spec.");
+  runGeneratedPlaywrightSpec(runnableSpecEntry[1], runnableSpecEntry[0]);
 } finally {
   await browser?.close().catch(() => undefined);
   fixtureServer.server.close();
   rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   rmSync(downloadDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  rmSync(generatedPlaywrightDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) {
@@ -447,6 +454,61 @@ async function waitForDownloadedFile(extension, existingFiles = new Set()) {
     await delay(100);
   }
   throw new Error(`Download with extension ${extension} was not created.`);
+}
+
+function runGeneratedPlaywrightSpec(specText, sourceName) {
+  const playwrightCli = resolve("node_modules/@playwright/test/cli.js");
+  assert(existsSync(playwrightCli), "Playwright CLI is not installed.");
+
+  const specPath = resolve(generatedPlaywrightDir, "generated.spec.ts");
+  const configPath = resolve(generatedPlaywrightDir, "playwright.config.mjs");
+  writeFileSync(specPath, specText);
+  writeFileSync(
+    configPath,
+    `import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: ".",
+  testMatch: /generated\\.spec\\.ts/,
+  workers: 1,
+  reporter: [["line"]],
+  use: {
+    browserName: "chromium",
+    headless: true,
+    launchOptions: {
+      executablePath: process.env.CHROME_BIN,
+      args: ["--disable-dev-shm-usage", "--no-sandbox"],
+    },
+  },
+});
+`,
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [playwrightCli, "test", "--config", configPath],
+    {
+      cwd: generatedPlaywrightDir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CHROME_BIN: findChrome(),
+      },
+      timeout: 120_000,
+    },
+  );
+
+  assert(
+    !result.error && result.status === 0,
+    [
+      `Generated Playwright spec failed: ${sourceName}`,
+      result.error ? `Error: ${result.error.message}` : undefined,
+      result.stdout ? `STDOUT:\n${result.stdout}` : undefined,
+      result.stderr ? `STDERR:\n${result.stderr}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  );
 }
 
 function parseJsonl(text) {
