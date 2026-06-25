@@ -37,6 +37,14 @@ if (!window.__SCENARIO_RECORDER_NAVIGATION_HOOKED__) {
     return result;
   };
 
-  window.addEventListener("popstate", emit);
-  window.addEventListener("hashchange", emit);
+  function handleMainWorldPopState(): void {
+    emit();
+  }
+
+  function handleMainWorldHashChange(): void {
+    emit();
+  }
+
+  window.addEventListener("popstate", handleMainWorldPopState);
+  window.addEventListener("hashchange", handleMainWorldHashChange);
 }

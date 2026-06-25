@@ -141,7 +141,7 @@ export default function App() {
   const canResume = state.status === "paused";
   const canStop = state.status === "recording" || state.status === "paused";
   const canClear = state.currentSteps.length > 0 && state.status !== "idle" ? true : state.currentSteps.length > 0;
-  const canSave = state.status === "idle" && state.currentSteps.length > 0;
+  const canSave = state.currentSteps.length > 0;
   const canExportAll = scenarios.length > 0;
   const latestScenario = useMemo(
     () => scenarios.find((scenario) => scenario.id === lastSavedScenarioId) ?? scenarios[0],
@@ -222,6 +222,16 @@ export default function App() {
       scenarioZipFileName(scenario),
       createZipBlob(scenarioZipEntries(scenario, settings)),
     );
+  }
+
+  async function saveCurrentRecording(): Promise<void> {
+    await flushActiveTabInputs();
+    const response = await sendRuntimeMessage<"SAVE_SCENARIO">({
+      type: "SAVE_SCENARIO",
+      payload: { name: scenarioName.trim() }
+    });
+    setLastSavedScenarioId(response.scenario.id);
+    setScenarioName("");
   }
 
   useEffect(() => {
@@ -340,25 +350,17 @@ export default function App() {
 
         <StepSummaryList title="今回の記録" steps={state.currentSteps} newestFirst />
 
-        {state.status === "idle" && state.currentSteps.length > 0 ? (
+        {state.currentSteps.length > 0 ? (
           <div className="savePanel">
             <button
               data-testid="save-scenario"
               className="primary"
               disabled={!canSave || isBusy}
               onClick={() =>
-                runAction(async () => {
-                  await flushActiveTabInputs();
-                  const response = await sendRuntimeMessage<"SAVE_SCENARIO">({
-                    type: "SAVE_SCENARIO",
-                    payload: { name: scenarioName.trim() }
-                  });
-                  setLastSavedScenarioId(response.scenario.id);
-                  setScenarioName("");
-                }, "記録を保存しました")
+                runAction(saveCurrentRecording, state.status === "idle" ? "記録を保存しました" : "保存して記録を終了しました")
               }
             >
-              記録を保存
+              {state.status === "idle" ? "記録を保存" : "保存して終了"}
             </button>
           </div>
         ) : null}

@@ -37,7 +37,7 @@ export function watchNavigation(onNavigation: NavigationHandler): void {
     emitNavigation(fromUrl, nextUrl);
   };
 
-  window.addEventListener(MAIN_WORLD_EVENT, (event) => {
+  function handleMainWorldNavigationEvent(event: Event): void {
     const detail = (event as CustomEvent<unknown>).detail as
       | { fromUrl?: unknown; toUrl?: unknown }
       | undefined;
@@ -48,8 +48,13 @@ export function watchNavigation(onNavigation: NavigationHandler): void {
       return;
     }
     emitNavigation(detail.fromUrl, detail.toUrl);
-  });
+  }
 
-  window.addEventListener("popstate", () => notifyIfChanged());
-  window.addEventListener("hashchange", () => notifyIfChanged());
+  function handleHistoryNavigationEvent(): void {
+    notifyIfChanged();
+  }
+
+  window.addEventListener(MAIN_WORLD_EVENT, handleMainWorldNavigationEvent);
+  window.addEventListener("popstate", handleHistoryNavigationEvent);
+  window.addEventListener("hashchange", handleHistoryNavigationEvent);
 }

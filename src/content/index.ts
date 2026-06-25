@@ -282,7 +282,10 @@ async function executeStep(step: ScenarioStep): Promise<void> {
 installRecorder(sendStep);
 void refreshRecordingOverlay();
 
-chrome.storage.onChanged.addListener((changes, areaName) => {
+function handleRecordingStorageChange(
+  changes: Record<string, chrome.storage.StorageChange>,
+  areaName: string,
+): void {
   if (
     areaName !== "local" ||
     (
@@ -293,45 +296,51 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     return;
   }
   void refreshRecordingOverlay();
-});
+}
 
-chrome.runtime.onMessage.addListener(
-  (message: ContentMessage, _sender, sendResponse) => {
-    if (message.type === "EXECUTE_SCENARIO_STEP") {
-      void executeStep(message.payload.step)
-        .then(() => sendResponse({ ok: true }))
-        .catch((error: unknown) => {
-          sendResponse({
-            error: error instanceof Error ? error.message : "Failed to execute scenario step",
-          });
-        });
-      return true;
-    }
-    if (message.type === "PREVIEW_SCENARIO_STEP") {
-      try {
-        sendResponse({ ok: true, navigationUrl: resolveNavigationUrl(message.payload.step) });
-      } catch (error: unknown) {
+chrome.storage.onChanged.addListener(handleRecordingStorageChange);
+
+function handleContentMessage(
+  message: ContentMessage,
+  _sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: unknown) => void,
+): boolean {
+  if (message.type === "EXECUTE_SCENARIO_STEP") {
+    void executeStep(message.payload.step)
+      .then(() => sendResponse({ ok: true }))
+      .catch((error: unknown) => {
         sendResponse({
-          error: error instanceof Error ? error.message : "Failed to preview scenario step",
+          error: error instanceof Error ? error.message : "Failed to execute scenario step",
         });
-      }
-      return true;
+      });
+    return true;
+  }
+  if (message.type === "PREVIEW_SCENARIO_STEP") {
+    try {
+      sendResponse({ ok: true, navigationUrl: resolveNavigationUrl(message.payload.step) });
+    } catch (error: unknown) {
+      sendResponse({
+        error: error instanceof Error ? error.message : "Failed to preview scenario step",
+      });
     }
-    if (message.type === "FLUSH_PENDING_INPUTS") {
-      void flushPendingInputs(sendStep, { throwOnError: true })
-        .then(() => sendResponse({ ok: true }))
-        .catch((error: unknown) => {
-          sendResponse({
-            error: error instanceof Error ? error.message : "Failed to flush pending inputs",
-          });
+    return true;
+  }
+  if (message.type === "FLUSH_PENDING_INPUTS") {
+    void flushPendingInputs(sendStep, { throwOnError: true })
+      .then(() => sendResponse({ ok: true }))
+      .catch((error: unknown) => {
+        sendResponse({
+          error: error instanceof Error ? error.message : "Failed to flush pending inputs",
         });
-      return true;
-    }
-    return false;
-  },
-);
+      });
+    return true;
+  }
+  return false;
+}
 
-watchNavigation((fromUrl, toUrl) => {
+chrome.runtime.onMessage.addListener(handleContentMessage);
+
+function handleRecordedNavigation(fromUrl: string, toUrl: string): void {
   void isRecording()
     .then(async (recording) => {
       if (!recording) {
@@ -342,4 +351,6 @@ watchNavigation((fromUrl, toUrl) => {
     .catch((error: unknown) => {
       console.warn("Scenario Recorder failed to record navigation.", error);
     });
-});
+}
+
+watchNavigation(handleRecordedNavigation);

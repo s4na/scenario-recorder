@@ -91,6 +91,14 @@ function scenario(id: string, name: string, updatedAt: string): Scenario {
   };
 }
 
+function expectIsoDateString(value: unknown): string {
+  expect(typeof value).toBe("string");
+  const text = value as string;
+  expect(Number.isNaN(Date.parse(text))).toBe(false);
+  expect(new Date(text).toISOString()).toBe(text);
+  return text;
+}
+
 async function sendMessage<T>(
   message: RuntimeMessage,
   sender: chrome.runtime.MessageSender = {},
@@ -169,6 +177,97 @@ describe("background", () => {
       tags: ["new"]
     });
     expect(response.scenarios[0]?.steps).toEqual([keptStep]);
+  });
+
+  it("saves the current recording without requiring a separate stop action", async () => {
+    const recordedStep: Scenario["steps"][number] = {
+      id: "step_save_now",
+      type: "click",
+      timestamp: 100,
+      url: "https://app.example/start",
+      target: {
+        tagName: "button",
+        selectorCandidates: [{ type: "text", value: "Create", confidence: 80 }]
+      }
+    };
+    localStorage.set("scenarioRecorder.recorderState", {
+      status: "recording",
+      currentSteps: [recordedStep],
+      recordingSessions: [{ startedAt: "2026-06-24T10:00:00.000Z" }],
+      startUrl: "https://app.example/start",
+      targetTabId: 7
+    } satisfies RecorderState);
+
+    const response = await sendMessage<{ scenario: Scenario; state: RecorderState }>({
+      type: "SAVE_SCENARIO",
+      payload: { name: "saved directly" }
+    });
+
+    expect(response.scenario).toMatchObject({
+      name: "saved directly",
+      steps: [recordedStep],
+      recording: {
+        sessions: [expect.objectContaining({
+          startedAt: "2026-06-24T10:00:00.000Z",
+          stoppedAt: expect.any(String),
+        })]
+      }
+    });
+    expectIsoDateString(response.scenario.recording.sessions[0]?.stoppedAt);
+    expect(response.state).toEqual({
+      status: "idle",
+      currentSteps: [],
+      recordingSessions: []
+    });
+    expect(localStorage.get("scenarioRecorder.scenarios")).toEqual([response.scenario]);
+  });
+
+  it("saves a paused recording while preserving pause session details", async () => {
+    const recordedStep: Scenario["steps"][number] = {
+      id: "step_save_paused",
+      type: "fill",
+      timestamp: 100,
+      url: "https://app.example/start",
+      value: "Sana",
+      target: {
+        tagName: "input",
+        selectorCandidates: [{ type: "label", value: "Name", confidence: 90 }]
+      }
+    };
+    localStorage.set("scenarioRecorder.recorderState", {
+      status: "paused",
+      currentSteps: [recordedStep],
+      recordingSessions: [{
+        startedAt: "2026-06-24T10:00:00.000Z",
+        pausedAt: "2026-06-24T10:01:00.000Z"
+      }],
+      startUrl: "https://app.example/start",
+      targetTabId: 7
+    } satisfies RecorderState);
+
+    const response = await sendMessage<{ scenario: Scenario; state: RecorderState }>({
+      type: "SAVE_SCENARIO",
+      payload: { name: "saved from pause" }
+    });
+
+    expect(response.scenario).toMatchObject({
+      name: "saved from pause",
+      steps: [recordedStep],
+      recording: {
+        sessions: [expect.objectContaining({
+          startedAt: "2026-06-24T10:00:00.000Z",
+          pausedAt: "2026-06-24T10:01:00.000Z",
+          stoppedAt: expect.any(String),
+        })]
+      }
+    });
+    expectIsoDateString(response.scenario.recording.sessions[0]?.stoppedAt);
+    expect(response.state).toEqual({
+      status: "idle",
+      currentSteps: [],
+      recordingSessions: []
+    });
+    expect(localStorage.get("scenarioRecorder.scenarios")).toEqual([response.scenario]);
   });
 
   it("normalizes target origins without a URL scheme", async () => {
