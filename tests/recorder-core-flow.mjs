@@ -101,10 +101,29 @@ try {
           "Generated Playwright did not disambiguate the repeated Create account button.",
         );
         assert(
-          specText.includes(".fill(\"What made setup feel easier or harder?\")"),
+          specText.includes("page.getByLabel(\"User name\").fill(\"Sana Researcher\")"),
+          "Generated Playwright did not include the user name fill.",
+        );
+        assert(
+          specText.includes("page.getByLabel(\"Work email\").fill(\"sana@example.test\")"),
+          "Generated Playwright did not include the work email fill.",
+        );
+        assert(
+          specText.includes("page.getByLabel(\"Primary goal\").selectOption(\"product-research\")"),
+          "Generated Playwright did not include the primary goal select.",
+        );
+        assert(
+          specText.includes("page.getByLabel(\"Survey title\").fill(\"Onboarding interview\")"),
+          "Generated Playwright did not include the survey title fill.",
+        );
+        assert(
+          specText.includes("page.getByLabel(\"Question prompt\").fill(\"What made setup feel easier or harder?\")"),
           "Generated Playwright did not include the question prompt textarea fill.",
         );
-        assert(specText.includes(".selectOption("), "Generated Playwright did not include the signup or builder selects.");
+        assert(
+          specText.includes("page.getByLabel(\"Answer type\").selectOption(\"long-text\")"),
+          "Generated Playwright did not include the answer type select.",
+        );
       },
     },
     {
@@ -159,10 +178,17 @@ try {
           "Generated Playwright did not disambiguate the repeated Answer button.",
         );
         assert(
-          specText.includes(".fill(\"The guided setup made the first survey easy to launch.\")"),
+          specText.includes("page.getByLabel(\"Respondent name\").fill(\"Mina Park\")"),
+          "Generated Playwright did not include the respondent name fill.",
+        );
+        assert(
+          specText.includes("page.getByLabel(\"Satisfaction\").selectOption(\"very-happy\")"),
+          "Generated Playwright did not include the satisfaction select.",
+        );
+        assert(
+          specText.includes("page.getByLabel(\"Feedback\").fill(\"The guided setup made the first survey easy to launch.\")"),
           "Generated Playwright did not include the feedback textarea fill.",
         );
-        assert(specText.includes(".selectOption("), "Generated Playwright did not include the satisfaction select.");
       },
     },
   ];

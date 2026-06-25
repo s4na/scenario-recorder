@@ -630,6 +630,33 @@ describe("scenario artifacts", () => {
     expect(code).not.toContain("page.getByTestId(\"Choose\").nth(1).click()");
   });
 
+  it("does not apply same-label nth to broad text locators", () => {
+    const code = scenarioToPlaywright({
+      ...scenario,
+      variables: {},
+      steps: [{
+        id: "step_repeated_text",
+        type: "click",
+        timestamp: 1,
+        url: "https://example.com/plans",
+        target: {
+          tagName: "button",
+          text: "Choose",
+          selectorCandidates: [
+            { type: "text", value: "Choose", confidence: 70 }
+          ],
+          contextSummary: {
+            heading: "Pro plan",
+            sameLabel: { value: "Choose", index: 2, count: 2 }
+          }
+        }
+      }]
+    });
+
+    expect(code).toContain("  await page.getByText(\"Choose\").click();");
+    expect(code).not.toContain("page.getByText(\"Choose\").nth(1).click()");
+  });
+
   it("generates regexp URL assertions for encoded secret masks", () => {
     expect(scenarioToPlaywright({
       ...scenario,

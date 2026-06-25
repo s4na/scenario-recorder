@@ -793,7 +793,7 @@ function disambiguateLocator(
 }
 
 function candidateMatchesSameLabel(candidate: SelectorCandidate, value: string): boolean {
-  if (["aria-label", "label", "text"].includes(candidate.type) && typeof candidate.value === "string") {
+  if (["aria-label", "label"].includes(candidate.type) && typeof candidate.value === "string") {
     return candidate.value === value;
   }
   return (
