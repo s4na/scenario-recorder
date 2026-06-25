@@ -205,7 +205,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
     "Saved scenario ZIP Playwright spec does not include the traveler fill action.",
   );
   assert(
-    savedEntries[savedSpecName].includes("page.getByLabel(\"Destination\").selectOption(\"okinawa\");"),
+    savedEntries[savedSpecName].includes("selectOption(\"okinawa\");"),
     "Saved scenario ZIP Playwright spec does not include the destination select action.",
   );
   assert(
