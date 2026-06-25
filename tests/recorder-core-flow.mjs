@@ -39,11 +39,11 @@ try {
         await page.getByTestId("research-workspace-card").getByRole("button", { name: "Create account" }).click();
         await page.getByLabel("User name").fill("Sana Researcher");
         await page.getByLabel("Work email").fill("sana@example.test");
-        await chooseSelectOption(page, "Primary goal", 1);
+        await page.getByLabel("Primary goal").selectOption("product-research");
         await page.getByRole("button", { name: "Continue" }).click();
         await page.getByLabel("Survey title").fill("Onboarding interview");
         await page.getByLabel("Question prompt").fill("What made setup feel easier or harder?");
-        await chooseSelectOption(page, "Answer type", 2);
+        await page.getByLabel("Answer type").selectOption("long-text");
         await page.getByRole("button", { name: "Publish form" }).click();
       },
       async assertPageState() {
@@ -132,7 +132,7 @@ try {
       async run() {
         await page.getByTestId("product-feedback-form-card").getByRole("button", { name: "Answer" }).click();
         await page.getByLabel("Respondent name").fill("Mina Park");
-        await chooseSelectOption(page, "Satisfaction", 2);
+        await page.getByLabel("Satisfaction").selectOption("very-happy");
         await page.getByLabel("Feedback").fill("The guided setup made the first survey easy to launch.");
         await page.getByRole("button", { name: "Submit answer" }).click();
       },
@@ -216,14 +216,6 @@ async function recordScenario(page, definition) {
   const steps = await page.evaluate(() => window.__scenarioRecorderCoreHarness.stop());
   definition.assertSteps(steps);
   return steps;
-}
-
-async function chooseSelectOption(page, label, downCount) {
-  await page.getByLabel(label).click();
-  for (let index = 0; index < downCount; index += 1) {
-    await page.keyboard.press("ArrowDown");
-  }
-  await page.keyboard.press("Enter");
 }
 
 function assertStepTypes(steps, requiredTypes) {
