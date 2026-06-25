@@ -1,4 +1,4 @@
-import { copyFileSync } from "node:fs";
+import { copyFileSync, cpSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -10,6 +10,7 @@ export default defineConfig({
       name: "copy-extension-manifest",
       closeBundle() {
         copyFileSync(resolve(__dirname, "manifest.json"), resolve(__dirname, "dist/manifest.json"));
+        cpSync(resolve(__dirname, "icons"), resolve(__dirname, "dist/icons"), { recursive: true });
       }
     }
   ],

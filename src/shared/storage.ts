@@ -14,7 +14,7 @@ const DEFAULT_RECORDER_STATE: RecorderState = {
 
 const DEFAULT_SETTINGS: ScenarioRecorderSettings = {
   allowedOrigins: [],
-  recordingDetailLevel: "minimal"
+  recordingDetailLevel: "context"
 };
 
 function getChromeStorage(): chrome.storage.StorageArea {
@@ -98,7 +98,7 @@ export async function getSettings(): Promise<ScenarioRecorderSettings> {
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
-    recordingDetailLevel: stored?.recordingDetailLevel === "context" ? "context" : "minimal"
+    recordingDetailLevel: "context"
   };
 }
 

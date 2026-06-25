@@ -36,6 +36,11 @@ describe("createTargetSnapshot", () => {
             <td>yamada@example.com</td>
             <td><button>Edit</button></td>
           </tr>
+          <tr>
+            <td>佐藤 花子</td>
+            <td>hanako@example.com</td>
+            <td><button>Edit</button></td>
+          </tr>
         </table>
       </section>
     `;
@@ -72,6 +77,18 @@ describe("createTargetSnapshot", () => {
       ]),
     );
     expect(snapshot.context?.map((item) => item.text).join(" ")).not.toContain("yamada@example.com");
+    expect(snapshot.contextSummary).toEqual(
+      expect.objectContaining({
+        scope: "tableRow",
+        heading: "Users",
+        nearbyText: expect.arrayContaining(["山田 太郎", "{{EMAIL}}"]),
+        sameLabel: {
+          value: "Edit",
+          index: 1,
+          count: 2,
+        },
+      }),
+    );
   });
 
   it("redacts sensitive values from all context string fields", () => {

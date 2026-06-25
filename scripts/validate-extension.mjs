@@ -34,6 +34,14 @@ if (manifest.action?.default_popup) {
   assertFile(extensionPath(manifest.action.default_popup), "Default popup");
 }
 
+for (const [size, icon] of Object.entries(manifest.icons ?? {})) {
+  assertFile(extensionPath(icon), `Extension icon ${size}`);
+}
+
+for (const [size, icon] of Object.entries(manifest.action?.default_icon ?? {})) {
+  assertFile(extensionPath(icon), `Action icon ${size}`);
+}
+
 if (manifest.background?.service_worker) {
   assertFile(extensionPath(manifest.background.service_worker), "Background service worker");
 }

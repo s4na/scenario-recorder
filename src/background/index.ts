@@ -765,7 +765,7 @@ async function updateStoredSettings(
 ): Promise<ScenarioRecorderSettings> {
   const normalized = {
     allowedOrigins: Array.from(new Set(settings.allowedOrigins.map(normalizeOrigin).filter(Boolean))),
-    recordingDetailLevel: settings.recordingDetailLevel === "context" ? "context" as const : "minimal" as const,
+    recordingDetailLevel: "context" as const,
   };
   await setSettings(normalized);
   return normalized;
