@@ -33,70 +33,74 @@ try {
 
   const scenarioDefinitions = [
     {
-      id: "booking_plan_flow",
-      name: "booking plan records repeated button, fill, and select",
+      id: "hono_route_deploy_flow",
+      name: "Hono route deploy records repeated button, textarea, and environment select",
       async run() {
-        await page.getByTestId("pro-plan-card").getByRole("button", { name: "Choose" }).click();
-        await page.getByLabel("Traveler name").fill("Sana Tester");
-        await chooseSelectOption(page, "Destination", 2);
+        await page.getByTestId("admin-api-route-card").getByRole("button", { name: "Deploy" }).click();
+        await page.getByLabel("Release note").fill("Ship admin audit middleware");
+        await chooseSelectOption(page, "Environment", 2);
       },
       async assertPageState() {
-        const selectedPlan = await page.locator("#selected-plan").textContent();
-        assert(selectedPlan === "Pro plan", `Expected Playwright to choose the Pro plan, got ${selectedPlan}.`);
+        const selectedRoute = await page.locator("#selected-route").textContent();
+        assert(selectedRoute === "Admin API", `Expected Playwright to deploy Admin API, got ${selectedRoute}.`);
       },
       assertSteps(steps) {
         assertStepTypes(steps, ["click", "fill", "select"]);
-        const planClick = steps.find((step) => step.type === "click");
+        const deployClick = steps.find((step) => step.type === "click");
         assert(
-          planClick?.target?.contextSummary?.heading === "Pro plan",
-          "Core recorder did not keep the clicked plan card heading context.",
+          deployClick?.target?.contextSummary?.heading === "Admin API",
+          "Core recorder did not keep the clicked route card heading context.",
         );
-        assertSameLabel(planClick, "Choose", 2, 2);
+        assertSameLabel(deployClick, "Deploy", 2, 2);
         assert(
-          steps.some((step) => step.type === "fill" && step.value === "Sana Tester" && step.target?.label === "Traveler name"),
-          "Core recorder did not record the traveler name fill with its label.",
+          steps.some((step) => step.type === "fill" && step.value === "Ship admin audit middleware" && step.target?.label === "Release note"),
+          "Core recorder did not record the release note fill with its label.",
         );
         assert(
           steps.some((step) => step.type === "select" && step.value !== undefined),
-          "Core recorder did not record a replayable destination select value.",
+          "Core recorder did not record a replayable environment select value.",
         );
       },
       assertSpec(specText) {
         assert(
-          specText.includes("page.getByRole(\"button\", { name: \"Choose\" }).nth(1).click()"),
-          "Generated Playwright did not disambiguate the repeated Choose button.",
+          specText.includes("page.getByRole(\"button\", { name: \"Deploy\" }).nth(1).click()"),
+          "Generated Playwright did not disambiguate the repeated Deploy button.",
         );
-        assert(specText.includes(".fill(\"Sana Tester\")"), "Generated Playwright did not include the traveler fill.");
-        assert(specText.includes(".selectOption("), "Generated Playwright did not include the destination select.");
+        assert(
+          specText.includes(".fill(\"Ship admin audit middleware\")"),
+          "Generated Playwright did not include the release note fill.",
+        );
+        assert(specText.includes(".selectOption("), "Generated Playwright did not include the environment select.");
       },
     },
     {
-      id: "project_settings_flow",
-      name: "project settings records another repeated button, fill, and select",
+      id: "hono_customer_edit_flow",
+      name: "Hono customer edit records repeated table button, input, and support select",
       async run() {
-        await page.getByTestId("beta-project-card").getByRole("button", { name: "Edit" }).click();
-        await page.getByLabel("Project alias").fill("migration-beta");
-        await chooseSelectOption(page, "Priority", 2);
+        await page.getByTestId("northstar-customer-row").getByRole("button", { name: "Edit" }).click();
+        await page.getByLabel("Account alias").fill("northstar-enterprise");
+        await chooseSelectOption(page, "Support tier", 2);
       },
       async assertPageState() {
-        const selectedProject = await page.locator("#selected-project").textContent();
-        assert(selectedProject === "Beta migration", `Expected Playwright to edit Beta migration, got ${selectedProject}.`);
+        const selectedCustomer = await page.locator("#selected-customer").textContent();
+        assert(selectedCustomer === "Northstar Labs", `Expected Playwright to edit Northstar Labs, got ${selectedCustomer}.`);
       },
       assertSteps(steps) {
         assertStepTypes(steps, ["click", "fill", "select"]);
         const editClick = steps.find((step) => step.type === "click");
         assert(
-          editClick?.target?.contextSummary?.heading === "Beta migration",
-          "Core recorder did not keep the clicked project card heading context.",
+          editClick?.target?.contextSummary?.nearbyText?.some((text) => text.includes("Northstar Labs")) ||
+            editClick?.target?.contextSummary?.heading === "Northstar Labs",
+          "Core recorder did not keep row context for the clicked customer Edit button.",
         );
         assertSameLabel(editClick, "Edit", 2, 2);
         assert(
-          steps.some((step) => step.type === "fill" && step.value === "migration-beta" && step.target?.label === "Project alias"),
-          "Core recorder did not record the project alias fill with its label.",
+          steps.some((step) => step.type === "fill" && step.value === "northstar-enterprise" && step.target?.label === "Account alias"),
+          "Core recorder did not record the account alias fill with its label.",
         );
         assert(
           steps.some((step) => step.type === "select" && step.value !== undefined),
-          "Core recorder did not record a replayable priority select value.",
+          "Core recorder did not record a replayable support tier select value.",
         );
       },
       assertSpec(specText) {
@@ -104,8 +108,11 @@ try {
           specText.includes("page.getByRole(\"button\", { name: \"Edit\" }).nth(1).click()"),
           "Generated Playwright did not disambiguate the repeated Edit button.",
         );
-        assert(specText.includes(".fill(\"migration-beta\")"), "Generated Playwright did not include the project alias fill.");
-        assert(specText.includes(".selectOption("), "Generated Playwright did not include the priority select.");
+        assert(
+          specText.includes(".fill(\"northstar-enterprise\")"),
+          "Generated Playwright did not include the account alias fill.",
+        );
+        assert(specText.includes(".selectOption("), "Generated Playwright did not include the support tier select.");
       },
     },
   ];
