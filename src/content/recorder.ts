@@ -1,5 +1,6 @@
 import type { RuntimeMessage } from "../shared/messages";
 import type { RecordingDetailLevel, ScenarioStep } from "../shared/types";
+import { showClickFeedback, showSelectionFeedback } from "./feedback";
 import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
 import { sanitizeUrl } from "./urlSanitizer";
@@ -27,6 +28,7 @@ type PendingFillSend = {
 
 const RETRY_DELAY_MS = 300;
 const OVERLAY_HOST_ID = "scenario-recorder-status-overlay";
+const FEEDBACK_HOST_ID = "scenario-recorder-feedback-layer";
 const pendingInputs = new Map<
   HTMLInputElement | HTMLTextAreaElement,
   PendingInput
@@ -191,7 +193,11 @@ function getComposedElement(event: Event): HTMLElement | undefined {
 }
 
 function isRecorderUiElement(element: HTMLElement): boolean {
-  return element.id === OVERLAY_HOST_ID || Boolean(element.closest(`#${OVERLAY_HOST_ID}`));
+  return (
+    element.id === OVERLAY_HOST_ID ||
+    element.id === FEEDBACK_HOST_ID ||
+    Boolean(element.closest(`#${OVERLAY_HOST_ID}, #${FEEDBACK_HOST_ID}`))
+  );
 }
 
 function isRecorderUiEvent(event: Event): boolean {
@@ -238,6 +244,7 @@ async function recordClick(
     ...createBaseStep("click"),
     target: createTargetSnapshot(target, { includeContext: shouldRecordTargetContext() }),
   });
+  showClickFeedback(target);
 }
 
 async function flushAndRecordClick(
@@ -484,7 +491,7 @@ function selectedInputText(
   return element.value.slice(Math.min(start, end), Math.max(start, end));
 }
 
-function currentSelection(): { text: string; target: HTMLElement } | undefined {
+function currentSelection(): { text: string; target: HTMLElement; rects: DOMRect[] } | undefined {
   const activeElement = document.activeElement;
   if (
     activeElement instanceof HTMLInputElement ||
@@ -492,7 +499,7 @@ function currentSelection(): { text: string; target: HTMLElement } | undefined {
   ) {
     const text = selectedInputText(activeElement)?.replace(/\s+/g, " ").trim();
     if (text) {
-      return { text, target: activeElement };
+      return { text, target: activeElement, rects: [activeElement.getBoundingClientRect()] };
     }
   }
   const selection = window.getSelection();
@@ -503,12 +510,13 @@ function currentSelection(): { text: string; target: HTMLElement } | undefined {
   if (!text) {
     return undefined;
   }
-  const container = selection.getRangeAt(0).commonAncestorContainer;
+  const range = selection.getRangeAt(0);
+  const container = range.commonAncestorContainer;
   const target = container instanceof HTMLElement ? container : container.parentElement;
   if (!target || isRecorderUiElement(target)) {
     return undefined;
   }
-  return { text, target };
+  return { text, target, rects: Array.from(range.getClientRects()) };
 }
 
 function recordSelection(onStep: StepHandler): void {
@@ -533,7 +541,9 @@ function recordSelection(onStep: StepHandler): void {
       target: createTargetSnapshot(selected.target, { includeContext: shouldRecordTargetContext() }),
       value: selected.text,
     }),
-  ).catch((error: unknown) => {
+  ).then(() => {
+    showSelectionFeedback(selected.rects);
+  }).catch((error: unknown) => {
     console.warn("Scenario Recorder failed to record text selection.", error);
   });
 }

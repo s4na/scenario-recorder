@@ -68,15 +68,14 @@ try {
   );
   const popupText = await controlPage.evaluate(() => document.body.innerText);
   assert(popupText.includes("作る"), "Popup does not expose the recording workflow.");
-  assert(popupText.includes("渡す"), "Popup does not expose the handoff workflow.");
-  assert(popupText.includes("シナリオ一覧"), "Popup does not expose the scenario list.");
-  assert(popupText.includes("ステップ概要"), "Popup does not show saved scenario step summaries.");
-  assert(popupText.includes("実行"), "Popup does not expose scenario execution.");
-  assert(popupText.includes("Codex用JSONLをダウンロード"), "Popup does not prioritize JSONL handoff.");
-  assert(popupText.includes("JSONをダウンロード"), "Popup does not expose per-scenario JSON download.");
-  assert(popupText.includes("Playwrightをダウンロード"), "Popup does not expose per-scenario Playwright download.");
+  assert(popupText.includes("エクスポート"), "Popup does not expose the export workflow.");
+  assert(popupText.includes("記録一覧"), "Popup does not expose the record list.");
+  assert(popupText.includes("記録の流れ"), "Popup does not show saved record step summaries.");
+  assert(popupText.includes("この記録をエクスポート"), "Popup does not expose one-record export.");
+  assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
+  assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
   assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
-  await clickPopupButtonWithText(controlPage, "Codex用JSONLをダウンロード");
+  await clickPopupButtonWithText(controlPage, "この記録をエクスポート");
   const latestJsonl = await waitForDownloadedFile(".jsonl");
   const latestJsonlLines = parseJsonl(readFileSync(latestJsonl, "utf8"));
   assert(latestJsonlLines[0]?.kind === "meta", "Downloaded JSONL does not start with metadata.");
@@ -84,6 +83,18 @@ try {
   assert(
     latestJsonlLines.some((line) => line.kind === "step" && line.type === "fill"),
     "Downloaded JSONL does not include the recorded fill step.",
+  );
+  await openPopupDetailsWithText(controlPage, "対象と管理");
+  assert(
+    await controlPage.evaluate(() => document.body.innerText.includes("全記録をエクスポート")),
+    "Popup does not expose all-record export.",
+  );
+  await clickPopupButtonWithText(controlPage, "全記録をエクスポート");
+  const allJsonls = await waitForDownloadedFile(".jsonls");
+  const allJsonlsLines = parseJsonl(readFileSync(allJsonls, "utf8"));
+  assert(
+    allJsonlsLines.filter((line) => line.kind === "meta").length === 2,
+    "Downloaded JSONLS does not include both saved records.",
   );
 } finally {
   await browser?.close().catch(() => undefined);
@@ -295,6 +306,26 @@ async function clickPopupButtonWithText(controlPage, text) {
       throw new Error(`Button was not found: ${buttonText}`);
     }
     button.click();
+  }, text);
+}
+
+async function openPopupDetailsWithText(controlPage, text) {
+  await controlPage.bringToFront();
+  await controlPage.waitForFunction((summaryText) => {
+    const summaries = Array.from(document.querySelectorAll("summary"));
+    return summaries.some((summary) => summary.textContent?.trim() === summaryText);
+  }, { timeout: 8_000 }, text);
+  await controlPage.evaluate((summaryText) => {
+    const summary = Array.from(document.querySelectorAll("summary"))
+      .find((candidate) => candidate.textContent?.trim() === summaryText);
+    if (!(summary instanceof HTMLElement)) {
+      throw new Error(`Summary was not found: ${summaryText}`);
+    }
+    const details = summary.closest("details");
+    if (!(details instanceof HTMLDetailsElement)) {
+      throw new Error(`Details was not found: ${summaryText}`);
+    }
+    details.open = true;
   }, text);
 }
 
