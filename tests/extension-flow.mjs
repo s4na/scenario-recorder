@@ -472,10 +472,17 @@ export default defineConfig({
   reporter: [["line"]],
   use: {
     browserName: "chromium",
-    headless: true,
+    headless: false,
     launchOptions: {
       executablePath: process.env.CHROME_BIN,
-      args: ["--disable-dev-shm-usage", "--no-sandbox"],
+      args: [
+        "--disable-background-networking",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-default-browser-check",
+        "--no-first-run",
+        "--no-sandbox",
+      ],
     },
   },
 });
