@@ -22,14 +22,18 @@ try {
     executablePath: findChrome(),
     headless: false,
     ignoreDefaultArgs: ["--disable-extensions"],
+    timeout: 90_000,
     userDataDir,
     args: [
+      "--disable-background-networking",
+      "--disable-dev-shm-usage",
       "--disable-gpu",
       "--no-sandbox",
       "--disable-extensions-except=" + extensionDir,
       "--load-extension=" + extensionDir,
       "--no-first-run",
       "--no-default-browser-check",
+      "--remote-debugging-address=127.0.0.1",
       "--window-size=1280,900",
     ],
   });
