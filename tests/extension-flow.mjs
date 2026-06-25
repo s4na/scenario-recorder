@@ -74,32 +74,51 @@ try {
   assert(popupText.includes("エクスポート"), "Popup does not expose the export workflow.");
   assert(popupText.includes("記録一覧"), "Popup does not expose the record list.");
   assert(popupText.includes("記録の流れ"), "Popup does not show saved record step summaries.");
-  assert(popupText.includes("この記録をエクスポート"), "Popup does not expose one-record export.");
+  assert(popupText.includes("この記録をzipでエクスポート"), "Popup does not expose one-record ZIP export.");
   assert(!popupText.includes("軽く記録"), "Popup still asks users to choose a lightweight recording mode.");
   assert(!popupText.includes("詳細に記録"), "Popup still asks users to choose a detailed recording mode.");
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
   assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
-  await clickPopupButtonWithText(controlPage, "この記録をエクスポート");
-  const latestJsonl = await waitForDownloadedFile(".jsonl");
-  const latestJsonlLines = parseJsonl(readFileSync(latestJsonl, "utf8"));
+  await clickPopupButtonWithText(controlPage, "この記録をzipでエクスポート");
+  const latestScenarioZip = await waitForDownloadedFile(".zip");
+  const latestEntries = readZipEntries(readFileSync(latestScenarioZip));
+  const latestEntryNames = Object.keys(latestEntries).sort();
+  const latestJsonlName = latestEntryNames.find((entry) => entry.endsWith(".jsonl"));
+  const latestSpecName = latestEntryNames.find((entry) => entry.endsWith(".spec.ts"));
+  assert(
+    latestEntryNames.length === 2 && latestJsonlName !== undefined && latestSpecName !== undefined,
+    "Downloaded scenario ZIP does not include both JSONL and Playwright files.",
+  );
+  const latestJsonlText = latestEntries[latestJsonlName];
+  const latestSpecText = latestEntries[latestSpecName];
+  const latestJsonlLines = parseJsonl(latestJsonlText);
   assert(latestJsonlLines[0]?.kind === "meta", "Downloaded JSONL does not start with metadata.");
   assert(latestJsonlLines[0]?.name === scenarios[0].name, "Downloaded JSONL does not use the latest scenario.");
   assert(
     latestJsonlLines.some((line) => line.kind === "step" && line.type === "fill"),
     "Downloaded JSONL does not include the recorded fill step.",
   );
+  assert(
+    latestSpecText.includes("import { test, expect } from '@playwright/test';") &&
+      latestSpecText.includes("await page."),
+    "Downloaded Playwright file does not include generated test code.",
+  );
   await openPopupDetailsWithText(controlPage, "対象と管理");
   assert(
-    await controlPage.evaluate(() => document.body.innerText.includes("全記録をエクスポート")),
+    await controlPage.evaluate(() => document.body.innerText.includes("全記録をzipでエクスポート")),
     "Popup does not expose all-record export.",
   );
-  await clickPopupButtonWithText(controlPage, "全記録をエクスポート");
-  const allRecordsZip = await waitForDownloadedFile(".zip");
+  const existingZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
+  await clickPopupButtonWithText(controlPage, "全記録をzipでエクスポート");
+  const allRecordsZip = await waitForDownloadedFile(".zip", existingZipFiles);
   const zipEntries = readZipEntries(readFileSync(allRecordsZip));
+  const zipEntryNames = Object.keys(zipEntries);
   assert(
-    zipEntries.length === 2 && zipEntries.every((entry) => entry.endsWith(".jsonl")),
-    "Downloaded ZIP does not include one JSONL file per saved record.",
+    zipEntryNames.length === 4 &&
+      zipEntryNames.filter((entry) => entry.endsWith(".jsonl")).length === 2 &&
+      zipEntryNames.filter((entry) => entry.endsWith(".spec.ts")).length === 2,
+    "Downloaded ZIP does not include JSONL and Playwright files for each saved record.",
   );
 } finally {
   await browser?.close().catch(() => undefined);
@@ -416,11 +435,11 @@ async function waitForNewPage(browser, existingPages) {
   throw new Error("Scenario execution did not open a new page.");
 }
 
-async function waitForDownloadedFile(extension) {
+async function waitForDownloadedFile(extension, existingFiles = new Set()) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 8_000) {
     const files = readdirSync(downloadDir)
-      .filter((file) => file.endsWith(extension) && !file.endsWith(".crdownload"))
+      .filter((file) => file.endsWith(extension) && !file.endsWith(".crdownload") && !existingFiles.has(file))
       .sort();
     if (files.length > 0) {
       return resolve(downloadDir, files.at(-1));
@@ -441,20 +460,23 @@ function parseJsonl(text) {
 function readZipEntries(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const decoder = new TextDecoder();
-  const names = [];
+  const entries = {};
   let offset = 0;
   while (offset < bytes.length - 4) {
-    if (view.getUint32(offset, true) === 0x02014b50) {
-      const filenameLength = view.getUint16(offset + 28, true);
-      const extraLength = view.getUint16(offset + 30, true);
-      const commentLength = view.getUint16(offset + 32, true);
-      names.push(decoder.decode(bytes.subarray(offset + 46, offset + 46 + filenameLength)));
-      offset += 46 + filenameLength + extraLength + commentLength;
+    if (view.getUint32(offset, true) === 0x04034b50) {
+      const dataLength = view.getUint32(offset + 18, true);
+      const filenameLength = view.getUint16(offset + 26, true);
+      const extraLength = view.getUint16(offset + 28, true);
+      const nameStart = offset + 30;
+      const dataStart = nameStart + filenameLength + extraLength;
+      const name = decoder.decode(bytes.subarray(nameStart, nameStart + filenameLength));
+      entries[name] = decoder.decode(bytes.subarray(dataStart, dataStart + dataLength));
+      offset = dataStart + dataLength;
       continue;
     }
     offset += 1;
   }
-  return names;
+  return entries;
 }
 
 function targetMatches(target, expected) {

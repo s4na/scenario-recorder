@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createZipBlob } from "./zip";
 
 describe("createZipBlob", () => {
-  it("stores each record as a separate JSONL file", async () => {
+  it("stores each text entry as a separate ZIP file entry", async () => {
     const zip = createZipBlob([
       { name: "first.jsonl", text: "{\"kind\":\"meta\",\"name\":\"first\"}" },
       { name: "second.jsonl", text: "{\"kind\":\"meta\",\"name\":\"second\"}" },
