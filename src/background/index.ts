@@ -151,6 +151,7 @@ async function startRecording(): Promise<RecorderState> {
       recordingSessions: [{ startedAt: now }],
       startedAt: now,
       startedAtMs: Date.now(),
+      startUrl: sanitizeOptionalUrl(activeTab?.url),
       targetTabId: activeTab?.id,
       targetWindowId: activeTab?.windowId,
     };
@@ -444,6 +445,9 @@ function createScenario(name: string, state: RecorderState): Scenario {
 }
 
 function getRecordingStartUrl(state: RecorderState): string | undefined {
+  if (state.startUrl) {
+    return sanitizeOptionalUrl(state.startUrl);
+  }
   const firstStep = state.currentSteps[0];
   return sanitizeOptionalUrl(
     firstStep?.type === "navigation" ? firstStep.toUrl : firstStep?.url,

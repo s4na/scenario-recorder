@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioStep } from "./types";
-import { sanitizeUrl, shouldReplaceFillStep } from "./utils";
+import { formatTimestampForScenarioName, sanitizeUrl, shouldReplaceFillStep } from "./utils";
 
 function fillStep(selector: string, value: string, timestamp: number): ScenarioStep {
   return {
@@ -44,6 +44,22 @@ describe("shouldReplaceFillStep", () => {
   it("does not match different fields", () => {
     expect(shouldReplaceFillStep(fillStep("#email", "a", 1), fillStep("#name", "b", 2))).toBe(
       false,
+    );
+  });
+});
+
+describe("formatTimestampForScenarioName", () => {
+  const date = new Date(2026, 5, 25, 12, 34, 56);
+
+  it("includes the URL host and path", () => {
+    expect(formatTimestampForScenarioName(date, "https://app.example.com/admin/users")).toBe(
+      "2026-06-25_12-34-56_app-example-com-admin-users",
+    );
+  });
+
+  it("keeps a visible root path segment", () => {
+    expect(formatTimestampForScenarioName(date, "https://app.example.com/")).toBe(
+      "2026-06-25_12-34-56_app-example-com-root",
     );
   });
 });

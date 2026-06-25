@@ -4,6 +4,7 @@ import type { ScenarioStep } from "../shared/types";
 
 describe("installRecorder", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     vi.resetModules();
@@ -103,6 +104,48 @@ describe("installRecorder", () => {
 
     expect(steps).toHaveLength(1);
     expect(steps[0].target?.context).toBeUndefined();
+  });
+
+  it("records text selection steps", async () => {
+    vi.useFakeTimers();
+    const { listeners, steps } = await installRecorderForContextTest("context");
+    document.body.innerHTML = "<p id=\"terms\">Please review the cancellation policy before booking.</p>";
+    const paragraph = document.querySelector("p");
+    const textNode = paragraph?.firstChild ?? document.body;
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      isCollapsed: false,
+      rangeCount: 1,
+      toString: () => "cancellation policy",
+      getRangeAt: () => ({ commonAncestorContainer: textNode }),
+    } as unknown as Selection);
+
+    dispatchTrustedListener(listeners, "selectionchange", document.body);
+    await vi.advanceTimersByTimeAsync(130);
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      type: "selection",
+      value: "cancellation policy",
+      target: expect.objectContaining({ tagName: "p", id: "terms" }),
+    });
+  });
+
+  it("ignores events from the recorder overlay", async () => {
+    const { listeners, steps } = await installRecorderForContextTest("context");
+    document.body.innerHTML = `
+      <div id="scenario-recorder-status-overlay">
+        <button type="button">Overlay action</button>
+      </div>
+    `;
+    const host = document.getElementById("scenario-recorder-status-overlay") as HTMLElement;
+    const button = document.querySelector("button") as HTMLButtonElement;
+
+    dispatchTrustedListener(listeners, "click", button, {
+      composedPath: () => [button, host, document.body, document],
+    });
+    await Promise.resolve();
+
+    expect(steps).toHaveLength(0);
   });
 });
 

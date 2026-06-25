@@ -70,6 +70,7 @@ try {
   assert(popupText.includes("作る"), "Popup does not expose the recording workflow.");
   assert(popupText.includes("渡す"), "Popup does not expose the handoff workflow.");
   assert(popupText.includes("シナリオ一覧"), "Popup does not expose the scenario list.");
+  assert(popupText.includes("ステップ概要"), "Popup does not show saved scenario step summaries.");
   assert(popupText.includes("実行"), "Popup does not expose scenario execution.");
   assert(popupText.includes("Codex用JSONLをダウンロード"), "Popup does not prioritize JSONL handoff.");
   assert(popupText.includes("JSONをダウンロード"), "Popup does not expose per-scenario JSON download.");
@@ -108,6 +109,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await waitForOverlay(fixturePage, "recording");
   await controlPage.reload({ waitUntil: "domcontentloaded" });
   await fixturePage.click("#choose-package");
+  await selectFixtureText(fixturePage, "#selection-source");
   await fixturePage.type("#traveler-name", "Sana Tester");
   await fixturePage.click("#destination");
   await fixturePage.keyboard.press("ArrowDown");
@@ -133,10 +135,15 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
 
   const [scenario] = await getScenarios(controlPage);
   assert(isDefaultScenarioName(scenario.name), "Unnamed context scenario did not use the timestamp default name.");
+  assert(
+    scenario.startUrl === `${fixtureOrigin}/fixture?case=context`,
+    "Unnamed context scenario did not keep the recording start URL.",
+  );
   const stepTypes = scenario.steps.map((step) => step.type);
   for (const type of ["click", "fill", "select", "submit"]) {
     assert(stepTypes.includes(type), `Context scenario is missing ${type} step.`);
   }
+  assert(stepTypes.includes("selection"), "Context scenario is missing text selection step.");
   assert(
     scenario.steps.some(
       (step) =>
@@ -171,6 +178,26 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
     !scenario.steps.some((step) => step.target?.text === "Paused action"),
     "Paused interaction was recorded.",
   );
+}
+
+async function selectFixtureText(page, selector) {
+  const rect = await page.$eval(selector, (element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const bounds = range.getBoundingClientRect();
+    return {
+      x: bounds.left,
+      y: bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  });
+  const y = rect.y + rect.height / 2;
+  await page.mouse.move(rect.x + 2, y);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + Math.min(rect.width - 2, 150), y, { steps: 8 });
+  await page.mouse.up();
+  await delay(220);
 }
 
 async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureOrigin }) {
@@ -480,6 +507,7 @@ function fixtureHtml() {
           <section aria-label="booking">
             <h1>Booking fixture</h1>
             <button id="choose-package" data-testid="choose-package">Choose family package</button>
+            <p id="selection-source">Cancellation policy applies to this package.</p>
             <label>
               Traveler name
               <input id="traveler-name" name="travelerName" placeholder="Traveler name">
