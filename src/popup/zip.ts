@@ -25,7 +25,13 @@ export function createZipBlob(entries: ZipEntry[]): Blob {
 
   const centralDirectorySize = centralDirectory.reduce((sum, item) => sum + item.length, 0);
   const end = createEndOfCentralDirectory(entries.length, centralDirectorySize, offset);
-  return new Blob([...localFiles, ...centralDirectory, end], { type: "application/zip" });
+  return new Blob([...localFiles, ...centralDirectory, end].map(toBlobPart), { type: "application/zip" });
+}
+
+function toBlobPart(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 function createLocalFileHeader(
