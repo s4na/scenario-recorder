@@ -20,8 +20,8 @@ let browser;
 try {
   browser = await puppeteer.launch({
     executablePath: findChrome(),
-    headless: process.env.CI === "true" ? true : false,
-    ignoreDefaultArgs: ["--disable-extensions"],
+    headless: false,
+    enableExtensions: [extensionDir],
     dumpio: process.env.CI === "true",
     pipe: true,
     timeout: 90_000,
@@ -31,8 +31,6 @@ try {
       "--disable-dev-shm-usage",
       "--disable-gpu",
       "--no-sandbox",
-      "--disable-extensions-except=" + extensionDir,
-      "--load-extension=" + extensionDir,
       "--no-first-run",
       "--no-default-browser-check",
       "--window-size=1280,900",
