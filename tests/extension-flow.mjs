@@ -78,8 +78,9 @@ try {
   assert(!popupText.includes("詳細に記録"), "Popup still asks users to choose a detailed recording mode.");
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
+  const existingLatestZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
   await clickPopupButtonWithText(controlPage, "この記録をzipでエクスポート");
-  const latestScenarioZip = await waitForDownloadedFile(".zip");
+  const latestScenarioZip = await waitForDownloadedFile(".zip", existingLatestZipFiles);
   const latestEntries = readZipEntries(readFileSync(latestScenarioZip));
   const latestEntryNames = Object.keys(latestEntries).sort();
   const latestJsonlName = latestEntryNames.find((entry) => entry.endsWith(".jsonl"));
