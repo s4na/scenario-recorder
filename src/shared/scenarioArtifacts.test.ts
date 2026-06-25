@@ -534,6 +534,7 @@ describe("scenario artifacts", () => {
   it("prefers labels over verbose roles for form controls", () => {
     const code = scenarioToPlaywright({
       ...scenario,
+      variables: {},
       steps: [{
         id: "step_form_label",
         type: "select",
