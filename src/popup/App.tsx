@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentMessage } from "../shared/messages";
 import { sendRuntimeMessage } from "../shared/messages";
-import { parseScenarioImportText, scenarioToJsonl, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
+import { parseScenarioImportText, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
 import type { RecorderState, Scenario, ScenarioRecorderSettings, ScenarioStep } from "../shared/types";
-import { downloadJson, downloadText, formatTimestampForFile, sanitizeFilePart } from "../shared/utils";
+import { downloadBlob, downloadJson } from "../shared/utils";
+import {
+  allScenariosZipEntries,
+  allScenariosZipFileName,
+  scenarioZipEntries,
+  scenarioZipFileName
+} from "./downloads";
 import { createZipBlob } from "./zip";
 
 const EMPTY_STATE: RecorderState = {
@@ -21,26 +27,6 @@ type Notice = {
   kind: "success" | "error";
   text: string;
 };
-
-function allRecordsZipFileName(): string {
-  return `scenario-records-${formatTimestampForFile()}.zip`;
-}
-
-function scenarioJsonlFileName(scenario: Scenario): string {
-  return `${sanitizeFilePart(scenario.name)}.jsonl`;
-}
-
-function uniqueZipEntryName(scenario: Scenario, usedNames: Set<string>): string {
-  const baseName = sanitizeFilePart(scenario.name);
-  let filename = `${baseName}.jsonl`;
-  let index = 2;
-  while (usedNames.has(filename)) {
-    filename = `${baseName}-${index}.jsonl`;
-    index += 1;
-  }
-  usedNames.add(filename);
-  return filename;
-}
 
 function truncateText(value: string, maxLength = 34): string {
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -178,7 +164,7 @@ export default function App() {
     setSettings(nextSettings);
   }
 
-  async function runAction(action: () => Promise<void>, successText?: string) {
+  async function runAction(action: () => Promise<void> | void, successText?: string) {
     setIsBusy(true);
     setNotice(undefined);
     try {
@@ -229,6 +215,13 @@ export default function App() {
       }
       throw error;
     }
+  }
+
+  function downloadScenarioZip(scenario: Scenario): void {
+    downloadBlob(
+      scenarioZipFileName(scenario),
+      createZipBlob(scenarioZipEntries(scenario, settings)),
+    );
   }
 
   useEffect(() => {
@@ -383,9 +376,9 @@ export default function App() {
           <StepSummaryList title="記録の流れ" steps={latestScenario.steps} limit={8} />
           <button
             className="primary"
-            onClick={() => downloadText(scenarioJsonlFileName(latestScenario), scenarioToJsonl(latestScenario), "application/x-ndjson;charset=utf-8")}
+            onClick={() => runAction(() => downloadScenarioZip(latestScenario), "この記録をエクスポートしました")}
           >
-            この記録をエクスポート
+            この記録をzipでエクスポート
           </button>
         </section>
       ) : null}
@@ -436,24 +429,14 @@ export default function App() {
                   const exportPayload = await sendRuntimeMessage<"EXPORT_ALL_SCENARIOS">({
                     type: "EXPORT_ALL_SCENARIOS"
                   });
-                  const usedNames = new Set<string>();
-                  const zip = createZipBlob(
-                    exportPayload.scenarios.map((scenario) => ({
-                      name: uniqueZipEntryName(scenario, usedNames),
-                      text: scenarioToJsonl(scenario),
-                    })),
+                  downloadBlob(
+                    allScenariosZipFileName(),
+                    createZipBlob(allScenariosZipEntries(exportPayload.scenarios, settings)),
                   );
-                  const filename = allRecordsZipFileName();
-                  const url = URL.createObjectURL(zip);
-                  const anchor = document.createElement("a");
-                  anchor.href = url;
-                  anchor.download = filename;
-                  anchor.click();
-                  URL.revokeObjectURL(url);
                 }, "全記録をエクスポートしました")
               }
             >
-              全記録をエクスポート
+              全記録をzipでエクスポート
             </button>
             <button disabled={isBusy} onClick={() => importInputRef.current?.click()}>
               インポート
@@ -506,8 +489,11 @@ export default function App() {
                   <StepSummaryList title="記録の流れ" steps={scenario.steps} limit={4} />
                 </div>
                 <div className="scenarioActions">
-                  <button className="primary" onClick={() => downloadText(scenarioJsonlFileName(scenario), scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
-                    ダウンロード
+                  <button
+                    className="primary"
+                    onClick={() => runAction(() => downloadScenarioZip(scenario), "記録をダウンロードしました")}
+                  >
+                    zipダウンロード
                   </button>
                   <button
                     className="danger"
