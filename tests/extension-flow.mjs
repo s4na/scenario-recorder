@@ -78,8 +78,9 @@ try {
   assert(!popupText.includes("詳細に記録"), "Popup still asks users to choose a detailed recording mode.");
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
+  const existingLatestZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
   await clickPopupButtonWithText(controlPage, "この記録をzipでエクスポート");
-  const latestScenarioZip = await waitForDownloadedFile(".zip");
+  const latestScenarioZip = await waitForDownloadedFile(".zip", existingLatestZipFiles);
   const latestEntries = readZipEntries(readFileSync(latestScenarioZip));
   const latestEntryNames = Object.keys(latestEntries).sort();
   const latestJsonlName = latestEntryNames.find((entry) => entry.endsWith(".jsonl"));
@@ -157,13 +158,61 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
     fixturePage.waitForNavigation({ waitUntil: "domcontentloaded" }),
     fixturePage.click("#submit-booking"),
   ]);
-  await clickPopup(controlPage, "stop-recording");
-  await waitForRecorderStatus(controlPage, "idle");
   await controlPage.reload({ waitUntil: "domcontentloaded" });
+  await waitForRecorderStatus(controlPage, "recording");
+  const existingSaveZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
   await clickPopup(controlPage, "save-scenario");
+  const savedScenarioZip = await waitForDownloadedFile(".zip", existingSaveZipFiles);
+  await waitForRecorderStatus(controlPage, "idle");
   await waitForScenarioCount(controlPage, 1);
 
   const [scenario] = await getScenarios(controlPage);
+  const savedEntries = readZipEntries(readFileSync(savedScenarioZip));
+  const savedJsonlName = Object.keys(savedEntries).find((entry) => entry.endsWith(".jsonl"));
+  const savedSpecName = Object.keys(savedEntries).find((entry) => entry.endsWith(".spec.ts"));
+  assert(savedJsonlName !== undefined && savedSpecName !== undefined, "Saved scenario ZIP is missing JSONL or Playwright files.");
+  const savedJsonlLines = parseJsonl(savedEntries[savedJsonlName]);
+  assert(
+    savedJsonlLines[0]?.kind === "meta" && savedJsonlLines[0]?.name === scenario.name,
+    "Saved scenario ZIP JSONL does not match the saved scenario.",
+  );
+  const savedJsonlSteps = savedJsonlLines.filter((line) => line.kind === "step");
+  assert(
+    savedJsonlSteps.some((line) =>
+      line.type === "fill" &&
+      line.value === "Sana Tester" &&
+      targetMatches(line.target, { id: "traveler-name", name: "travelerName", label: "Traveler name" })
+    ),
+    "Saved scenario ZIP JSONL does not include the recorded traveler fill step.",
+  );
+  assert(
+    savedJsonlSteps.some((line) =>
+      line.type === "select" &&
+      line.value === "okinawa" &&
+      targetMatches(line.target, { id: "destination", name: "destination", label: "Destination" })
+    ),
+    "Saved scenario ZIP JSONL does not include the recorded destination select step.",
+  );
+  assert(
+    savedJsonlSteps.some((line) => line.type === "submit" && targetMatches(line.submitter, { id: "submit-booking" })),
+    "Saved scenario ZIP JSONL does not include the recorded submit step.",
+  );
+  assert(
+    savedEntries[savedSpecName].includes("import { test, expect } from '@playwright/test';"),
+    "Saved scenario ZIP Playwright spec does not include the Playwright import.",
+  );
+  assert(
+    savedEntries[savedSpecName].includes("page.getByLabel(\"Traveler name\").fill(\"Sana Tester\");"),
+    "Saved scenario ZIP Playwright spec does not include the traveler fill action.",
+  );
+  assert(
+    savedEntries[savedSpecName].includes("selectOption(\"okinawa\");"),
+    "Saved scenario ZIP Playwright spec does not include the destination select action.",
+  );
+  assert(
+    savedEntries[savedSpecName].includes("page.getByRole(\"button\", { name: \"Submit booking\" }).click();"),
+    "Saved scenario ZIP Playwright spec does not include the submit click action.",
+  );
   assert(isDefaultScenarioName(scenario.name), "Unnamed context scenario did not use the timestamp default name.");
   assert(
     scenario.startUrl === `${fixtureOrigin}/fixture?case=context`,
