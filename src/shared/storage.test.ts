@@ -67,10 +67,10 @@ describe("storage", () => {
 
     await expect(getSettings()).resolves.toEqual({
       allowedOrigins: [],
-      recordingDetailLevel: "minimal"
+      recordingDetailLevel: "context"
     });
 
-    await setSettings({ allowedOrigins: ["https://example.com"], recordingDetailLevel: "context" });
+    await setSettings({ allowedOrigins: ["https://example.com"], recordingDetailLevel: "minimal" });
 
     await expect(getSettings()).resolves.toEqual({
       allowedOrigins: ["https://example.com"],

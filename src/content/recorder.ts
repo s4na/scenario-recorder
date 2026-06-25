@@ -1,5 +1,5 @@
 import type { RuntimeMessage } from "../shared/messages";
-import type { RecordingDetailLevel, ScenarioStep } from "../shared/types";
+import type { ScenarioStep } from "../shared/types";
 import { showClickFeedback, showSelectionFeedback } from "./feedback";
 import { maskValue } from "./masking";
 import { createTargetSnapshot } from "./selector";
@@ -41,7 +41,6 @@ let lastClickSignature = "";
 let lastClickTimestamp = 0;
 let lastClickTarget: HTMLElement | undefined;
 let cachedRecording = false;
-let cachedRecordingDetailLevel: RecordingDetailLevel = "minimal";
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
 let recordingTargetRefreshSequence = 0;
@@ -66,7 +65,6 @@ async function refreshRecordingTargetCache(): Promise<void> {
     return;
   }
   cachedRecording = Boolean(response?.recording);
-  cachedRecordingDetailLevel = response?.recordingDetailLevel === "context" ? "context" : "minimal";
 }
 
 function markRecordingTargetUnavailable(error: unknown, refreshSequence: number): void {
@@ -103,7 +101,7 @@ function isRecording(): boolean {
 }
 
 function shouldRecordTargetContext(): boolean {
-  return cachedRecordingDetailLevel === "context";
+  return true;
 }
 
 function isDisabledElement(element: HTMLElement): boolean {

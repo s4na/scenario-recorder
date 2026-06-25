@@ -174,7 +174,7 @@ describe("background", () => {
   it("normalizes target origins without a URL scheme", async () => {
     await expect(sendMessage({
       type: "UPDATE_SETTINGS",
-      payload: { allowedOrigins: ["localhost:3000"], recordingDetailLevel: "context" }
+      payload: { allowedOrigins: ["localhost:3000"], recordingDetailLevel: "minimal" }
     })).resolves.toEqual({
       allowedOrigins: ["https://localhost:3000"],
       recordingDetailLevel: "context"
@@ -205,7 +205,7 @@ describe("background", () => {
     await expect(sendMessage(
       { type: "IS_RECORDING_TARGET" },
       { tab: { id: 1 } as chrome.tabs.Tab },
-    )).resolves.toEqual({ recording: true, recordingDetailLevel: "minimal" });
+    )).resolves.toEqual({ recording: true, recordingDetailLevel: "context" });
 
     navigationListener({
       tabId: 1,
@@ -238,7 +238,7 @@ describe("background", () => {
     await expect(sendMessage(
       { type: "IS_RECORDING_TARGET" },
       { tab: { id: 1 } as chrome.tabs.Tab },
-    )).resolves.toEqual({ recording: false, recordingDetailLevel: "minimal" });
+    )).resolves.toEqual({ recording: false, recordingDetailLevel: "context" });
   });
 
   it("returns recording summary details for the target tab overlay", async () => {

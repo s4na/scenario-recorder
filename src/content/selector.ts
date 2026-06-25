@@ -1,8 +1,11 @@
-import type { SelectorCandidate, TargetContext, TargetSnapshot } from "../shared/types";
+import type { SelectorCandidate, TargetContext, TargetContextSummary, TargetSnapshot } from "../shared/types";
 import { shouldMaskValue } from "./masking";
 
 const MAX_TEXT_LENGTH = 120;
-const MAX_CONTEXT_ITEMS = 4;
+const MAX_CONTEXT_ITEMS = 6;
+const MAX_CONTEXT_DEPTH = 5;
+const MAX_NEARBY_ITEMS = 4;
+const MAX_NEARBY_CONTROLS = 6;
 const SECRET_TEXT_PATTERNS = [
   /sk_(live|test)_[A-Za-z0-9_=-]+/gi,
   /bearer\s+[A-Za-z0-9._~+/=-]+/gi,
@@ -266,7 +269,8 @@ export function createTargetSnapshot(
       width: Math.round(rect.width),
       height: Math.round(rect.height)
     },
-    context: options.includeContext ? getTargetContext(element) : undefined
+    context: options.includeContext ? getTargetContext(element) : undefined,
+    contextSummary: options.includeContext ? getTargetContextSummary(element) : undefined
   };
 }
 
@@ -275,7 +279,7 @@ function getTargetContext(element: HTMLElement): TargetContext[] {
   addContext(context, element, "self", 0);
   let current = element.parentElement;
   let depth = 1;
-  while (current && current !== document.body && context.length < MAX_CONTEXT_ITEMS) {
+  while (current && current !== document.body && context.length < MAX_CONTEXT_ITEMS && depth <= MAX_CONTEXT_DEPTH) {
     if (isMeaningfulContextElement(current)) {
       addContext(context, current, "ancestor", depth);
     }
@@ -329,4 +333,158 @@ function isMeaningfulContextElement(element: HTMLElement): boolean {
     element.hasAttribute("data-cy") ||
     /\b(card|item|panel|row|section|table|list|dialog|modal)\b/i.test(element.className)
   );
+}
+
+function getTargetContextSummary(element: HTMLElement): TargetContextSummary | undefined {
+  const scope = findContextScope(element);
+  const sameLabel = getSameLabelPosition(element);
+  const summary: TargetContextSummary = {
+    scope: scope?.scope,
+    heading: findContextHeading(scope?.element ?? element),
+    nearbyText: scope ? getNearbyText(scope.element, element) : undefined,
+    nearbyControls: scope ? getNearbyControls(scope.element, element) : undefined,
+    sameLabel,
+  };
+  if (
+    summary.scope ||
+    summary.heading ||
+    summary.nearbyText?.length ||
+    summary.nearbyControls?.length ||
+    summary.sameLabel
+  ) {
+    return summary;
+  }
+  return undefined;
+}
+
+function findContextScope(element: HTMLElement): { element: HTMLElement; scope: TargetContextSummary["scope"] } | undefined {
+  const candidates: Array<[string, TargetContextSummary["scope"]]> = [
+    ["tr,[role='row']", "tableRow"],
+    ["form,[role='form']", "form"],
+    ["dialog,[role='dialog'],[aria-modal='true'],.dialog,.modal", "dialog"],
+    ["article,.card,.panel,[data-testid*='card'],[data-test*='card'],[data-cy*='card']", "card"],
+    ["li,[role='listitem']", "listItem"],
+    ["section,[role='region'],main", "section"],
+  ];
+  for (const [selector, scope] of candidates) {
+    const match = element.closest(selector);
+    if (match instanceof HTMLElement && isVisibleElement(match)) {
+      return { element: match, scope };
+    }
+  }
+  const ancestor = element.parentElement;
+  return ancestor && ancestor !== document.body ? { element: ancestor, scope: "ancestor" } : undefined;
+}
+
+function findContextHeading(scope: HTMLElement): string | undefined {
+  const ownHeading = firstCleanText(
+    Array.from(scope.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6,[role='heading']")).map((item) => item.innerText),
+  );
+  if (ownHeading) {
+    return ownHeading;
+  }
+  const labelledBy = getAriaLabelledByText(scope);
+  if (labelledBy) {
+    return labelledBy;
+  }
+  const ariaLabel = cleanContextText(scope.getAttribute("aria-label"));
+  if (ariaLabel) {
+    return ariaLabel;
+  }
+  let current = scope.parentElement;
+  let depth = 0;
+  while (current && current !== document.body && depth < MAX_CONTEXT_DEPTH) {
+    const heading = firstCleanText(
+      Array.from(current.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6,[role='heading']")).map((item) => item.innerText),
+    );
+    if (heading) {
+      return heading;
+    }
+    const labelledBy = getAriaLabelledByText(current);
+    if (labelledBy) {
+      return labelledBy;
+    }
+    const ariaLabel = cleanContextText(current.getAttribute("aria-label"));
+    if (ariaLabel) {
+      return ariaLabel;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return undefined;
+}
+
+function getNearbyText(scope: HTMLElement, target: HTMLElement): string[] | undefined {
+  const values: string[] = [];
+  const candidates = Array.from(scope.querySelectorAll<HTMLElement>("label,legend,caption,th,td,p,dt,dd,li,h1,h2,h3,h4,h5,h6"));
+  for (const item of candidates) {
+    if (values.length >= MAX_NEARBY_ITEMS) {
+      break;
+    }
+    if (item === target || item.contains(target) || !isVisibleElement(item)) {
+      continue;
+    }
+    addUniqueText(values, item.innerText ?? item.textContent);
+  }
+  return values.length ? values : undefined;
+}
+
+function getNearbyControls(scope: HTMLElement, target: HTMLElement): string[] | undefined {
+  const values: string[] = [];
+  const controls = Array.from(scope.querySelectorAll<HTMLElement>("button,a[href],input,select,textarea,[role='button'],[role='link']"));
+  for (const control of controls) {
+    if (values.length >= MAX_NEARBY_CONTROLS) {
+      break;
+    }
+    if (control === target || !isVisibleElement(control)) {
+      continue;
+    }
+    addUniqueText(values, getAccessibleName(control) ?? control.getAttribute("value"));
+  }
+  return values.length ? values : undefined;
+}
+
+function getSameLabelPosition(element: HTMLElement): TargetContextSummary["sameLabel"] | undefined {
+  const value = getAccessibleName(element);
+  if (!value) {
+    return undefined;
+  }
+  const role = getElementRole(element);
+  const tagName = element.tagName.toLowerCase();
+  const same = Array.from(document.querySelectorAll<HTMLElement>(tagName))
+    .filter((candidate) =>
+      isVisibleElement(candidate) &&
+      getElementRole(candidate) === role &&
+      getAccessibleName(candidate) === value
+    );
+  if (same.length <= 1) {
+    return undefined;
+  }
+  const index = same.indexOf(element);
+  return index >= 0 ? { value, index: index + 1, count: same.length } : undefined;
+}
+
+function firstCleanText(values: Array<string | null | undefined>): string | undefined {
+  for (const value of values) {
+    const text = cleanContextText(value);
+    if (text) {
+      return text;
+    }
+  }
+  return undefined;
+}
+
+function addUniqueText(values: string[], value: string | null | undefined): void {
+  const text = cleanContextText(value);
+  if (text && !values.includes(text)) {
+    values.push(text);
+  }
+}
+
+function isVisibleElement(element: HTMLElement): boolean {
+  if (element.getAttribute("aria-hidden") === "true" || element.hidden) {
+    return false;
+  }
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden";
 }

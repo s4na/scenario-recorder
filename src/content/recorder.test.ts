@@ -90,7 +90,7 @@ describe("installRecorder", () => {
     );
   });
 
-  it("omits target context when the active recording uses minimal detail", async () => {
+  it("keeps target context for legacy minimal settings", async () => {
     const { listeners, steps } = await installRecorderForContextTest("minimal");
     document.body.innerHTML = `
       <section aria-label="Billing actions">
@@ -103,7 +103,15 @@ describe("installRecorder", () => {
     await Promise.resolve();
 
     expect(steps).toHaveLength(1);
-    expect(steps[0].target?.context).toBeUndefined();
+    expect(steps[0].target?.context).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relation: "ancestor",
+          tagName: "section",
+          ariaLabel: "Billing actions",
+        }),
+      ]),
+    );
   });
 
   it("records text selection steps", async () => {

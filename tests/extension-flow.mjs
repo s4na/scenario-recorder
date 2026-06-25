@@ -47,7 +47,7 @@ try {
   await clearExtensionStorage(controlPage);
 
   await runContextRecording({ controlPage, fixturePage, fixtureOrigin });
-  await runMinimalRecording({ browser, controlPage, fixturePage, fixtureOrigin });
+  await runLoginRecording({ browser, controlPage, fixturePage, fixtureOrigin });
 
   const scenarios = await getScenarios(controlPage);
   assert(scenarios.length === 2, `Expected 2 saved scenarios, got ${scenarios.length}.`);
@@ -56,8 +56,8 @@ try {
     "Unnamed context scenario was not saved with a timestamp name.",
   );
   assert(
-    scenarios.some((scenario) => scenario.name === "軽量ログイン確認"),
-    "Minimal scenario was not saved.",
+    scenarios.some((scenario) => scenario.name === "ログイン確認"),
+    "Login scenario was not saved.",
   );
 
   await controlPage.reload({ waitUntil: "domcontentloaded" });
@@ -72,6 +72,8 @@ try {
   assert(popupText.includes("記録一覧"), "Popup does not expose the record list.");
   assert(popupText.includes("記録の流れ"), "Popup does not show saved record step summaries.");
   assert(popupText.includes("この記録をエクスポート"), "Popup does not expose one-record export.");
+  assert(!popupText.includes("軽く記録"), "Popup still asks users to choose a lightweight recording mode.");
+  assert(!popupText.includes("詳細に記録"), "Popup still asks users to choose a detailed recording mode.");
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
   assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
@@ -90,11 +92,11 @@ try {
     "Popup does not expose all-record export.",
   );
   await clickPopupButtonWithText(controlPage, "全記録をエクスポート");
-  const allJsonls = await waitForDownloadedFile(".jsonls");
-  const allJsonlsLines = parseJsonl(readFileSync(allJsonls, "utf8"));
+  const allRecordsZip = await waitForDownloadedFile(".zip");
+  const zipEntries = readZipEntries(readFileSync(allRecordsZip));
   assert(
-    allJsonlsLines.filter((line) => line.kind === "meta").length === 2,
-    "Downloaded JSONLS does not include both saved records.",
+    zipEntries.length === 2 && zipEntries.every((entry) => entry.endsWith(".jsonl")),
+    "Downloaded ZIP does not include one JSONL file per saved record.",
   );
 } finally {
   await browser?.close().catch(() => undefined);
@@ -111,9 +113,6 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
     recordingDetailLevel: "minimal",
   });
   await controlPage.reload({ waitUntil: "domcontentloaded" });
-  await clickPopup(controlPage, "mode-context");
-  await waitForAriaPressed(controlPage, "mode-context", true);
-  await waitForAriaPressed(controlPage, "mode-minimal", false);
   await fixturePage.bringToFront();
   await clickPopup(controlPage, "start-recording");
   await waitForRecorderStatus(controlPage, "recording");
@@ -211,15 +210,13 @@ async function selectFixtureText(page, selector) {
   await delay(220);
 }
 
-async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureOrigin }) {
+async function runLoginRecording({ browser, controlPage, fixturePage, fixtureOrigin }) {
   await fixturePage.goto(`${fixtureOrigin}/fixture?case=minimal`, { waitUntil: "domcontentloaded" });
   await setSettings(controlPage, {
     allowedOrigins: [fixtureOrigin],
     recordingDetailLevel: "minimal",
   });
   await controlPage.reload({ waitUntil: "domcontentloaded" });
-  await waitForAriaPressed(controlPage, "mode-minimal", true);
-  await waitForAriaPressed(controlPage, "mode-context", false);
   await fixturePage.bringToFront();
   await sendExtensionMessage(controlPage, { type: "START_RECORDING" });
   await waitForRecorderStatus(controlPage, "recording");
@@ -234,19 +231,19 @@ async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureO
   await sendExtensionMessage(controlPage, { type: "STOP_RECORDING" });
   await sendExtensionMessage(controlPage, {
     type: "SAVE_SCENARIO",
-    payload: { name: "軽量ログイン確認" },
+    payload: { name: "ログイン確認" },
   });
   await waitForScenarioCount(controlPage, 2);
 
   const [scenario] = await getScenarios(controlPage);
-  assert(scenario.name === "軽量ログイン確認", "Latest minimal scenario name did not match.");
+  assert(scenario.name === "ログイン確認", "Latest login scenario name did not match.");
   assert(
     scenario.steps.some((step) => step.type === "fill"),
-    "Minimal scenario did not record fill steps.",
+    "Login scenario did not record fill steps.",
   );
   assert(
-    scenario.steps.every((step) => !step.target?.context),
-    "Minimal recording unexpectedly kept target context.",
+    scenario.steps.some((step) => step.target?.context?.length > 0 || step.target?.contextSummary),
+    "Standard recording did not keep target context.",
   );
 
   const existingPages = new Set(await browser.pages());
@@ -327,15 +324,6 @@ async function openPopupDetailsWithText(controlPage, text) {
     }
     details.open = true;
   }, text);
-}
-
-async function waitForAriaPressed(controlPage, testId, expected) {
-  await controlPage.waitForFunction(
-    (selector, expectedValue) => document.querySelector(selector)?.getAttribute("aria-pressed") === String(expectedValue),
-    { timeout: 8_000 },
-    `[data-testid="${testId}"]`,
-    expected,
-  );
 }
 
 async function waitForRecorderStatus(controlPage, status) {
@@ -445,6 +433,25 @@ function parseJsonl(text) {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+}
+
+function readZipEntries(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const decoder = new TextDecoder();
+  const names = [];
+  let offset = 0;
+  while (offset < bytes.length - 4) {
+    if (view.getUint32(offset, true) === 0x02014b50) {
+      const filenameLength = view.getUint16(offset + 28, true);
+      const extraLength = view.getUint16(offset + 30, true);
+      const commentLength = view.getUint16(offset + 32, true);
+      names.push(decoder.decode(bytes.subarray(offset + 46, offset + 46 + filenameLength)));
+      offset += 46 + filenameLength + extraLength + commentLength;
+      continue;
+    }
+    offset += 1;
+  }
+  return names;
 }
 
 function targetMatches(target, expected) {

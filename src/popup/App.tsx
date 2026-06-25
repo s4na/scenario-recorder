@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentMessage } from "../shared/messages";
 import { sendRuntimeMessage } from "../shared/messages";
-import { parseScenarioImportText, scenarioToJsonl, scenariosToJsonls, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
+import { parseScenarioImportText, scenarioToJsonl, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
 import type { RecorderState, Scenario, ScenarioRecorderSettings, ScenarioStep } from "../shared/types";
 import { downloadJson, downloadText, formatTimestampForFile, sanitizeFilePart } from "../shared/utils";
+import { createZipBlob } from "./zip";
 
 const EMPTY_STATE: RecorderState = {
   status: "idle",
@@ -13,7 +14,7 @@ const EMPTY_STATE: RecorderState = {
 
 const EMPTY_SETTINGS: ScenarioRecorderSettings = {
   allowedOrigins: [],
-  recordingDetailLevel: "minimal"
+  recordingDetailLevel: "context"
 };
 
 type Notice = {
@@ -21,12 +22,24 @@ type Notice = {
   text: string;
 };
 
-function allRecordsJsonlsFileName(): string {
-  return `scenario-records-${formatTimestampForFile()}.jsonls`;
+function allRecordsZipFileName(): string {
+  return `scenario-records-${formatTimestampForFile()}.zip`;
 }
 
 function scenarioJsonlFileName(scenario: Scenario): string {
   return `${sanitizeFilePart(scenario.name)}.jsonl`;
+}
+
+function uniqueZipEntryName(scenario: Scenario, usedNames: Set<string>): string {
+  const baseName = sanitizeFilePart(scenario.name);
+  let filename = `${baseName}.jsonl`;
+  let index = 2;
+  while (usedNames.has(filename)) {
+    filename = `${baseName}-${index}.jsonl`;
+    index += 1;
+  }
+  usedNames.add(filename);
+  return filename;
 }
 
 function truncateText(value: string, maxLength = 34): string {
@@ -114,10 +127,6 @@ function StepSummaryList({
       {remainingCount > 0 ? <p className="moreSteps">ほか {remainingCount} steps</p> : null}
     </section>
   );
-}
-
-function detailLevelLabel(detailLevel: ScenarioRecorderSettings["recordingDetailLevel"]): string {
-  return detailLevel === "context" ? "詳細に記録" : "軽く記録";
 }
 
 function isContentScriptUnavailableError(message: string): boolean {
@@ -257,7 +266,7 @@ export default function App() {
             <h2>作る</h2>
             <p>いま開いているタブの作業を記録</p>
           </div>
-          <span>{detailLevelLabel(settings.recordingDetailLevel)}</span>
+          <span>周辺情報あり</span>
         </div>
 
         <label className="field">
@@ -269,49 +278,6 @@ export default function App() {
             placeholder="空なら日時とURLで保存"
           />
         </label>
-
-        <div className="modeGroup" aria-label="記録の詳細度">
-          <button
-            data-testid="mode-context"
-            aria-pressed={settings.recordingDetailLevel === "context"}
-            className={settings.recordingDetailLevel === "context" ? "selected" : ""}
-            disabled={isBusy}
-            onClick={() =>
-              runAction(async () => {
-                const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
-                  type: "UPDATE_SETTINGS",
-                  payload: {
-                    allowedOrigins: settings.allowedOrigins,
-                    recordingDetailLevel: "context"
-                  }
-                });
-                setSettings(nextSettings);
-              }, "記録の詳細度を保存しました")
-            }
-          >
-            詳細に記録
-          </button>
-          <button
-            data-testid="mode-minimal"
-            aria-pressed={settings.recordingDetailLevel === "minimal"}
-            className={settings.recordingDetailLevel === "minimal" ? "selected" : ""}
-            disabled={isBusy}
-            onClick={() =>
-              runAction(async () => {
-                const nextSettings = await sendRuntimeMessage<"UPDATE_SETTINGS">({
-                  type: "UPDATE_SETTINGS",
-                  payload: {
-                    allowedOrigins: settings.allowedOrigins,
-                    recordingDetailLevel: "minimal"
-                  }
-                });
-                setSettings(nextSettings);
-              }, "記録の詳細度を保存しました")
-            }
-          >
-            軽く記録
-          </button>
-        </div>
 
         <div className="primaryActions">
           {canStart ? (
@@ -470,7 +436,20 @@ export default function App() {
                   const exportPayload = await sendRuntimeMessage<"EXPORT_ALL_SCENARIOS">({
                     type: "EXPORT_ALL_SCENARIOS"
                   });
-                  downloadText(allRecordsJsonlsFileName(), scenariosToJsonls(exportPayload.scenarios), "application/x-ndjson;charset=utf-8");
+                  const usedNames = new Set<string>();
+                  const zip = createZipBlob(
+                    exportPayload.scenarios.map((scenario) => ({
+                      name: uniqueZipEntryName(scenario, usedNames),
+                      text: scenarioToJsonl(scenario),
+                    })),
+                  );
+                  const filename = allRecordsZipFileName();
+                  const url = URL.createObjectURL(zip);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = filename;
+                  anchor.click();
+                  URL.revokeObjectURL(url);
                 }, "全記録をエクスポートしました")
               }
             >

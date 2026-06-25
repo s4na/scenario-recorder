@@ -51,6 +51,7 @@ export type TargetSnapshot = {
     height: number;
   };
   context?: TargetContext[];
+  contextSummary?: TargetContextSummary;
 };
 
 export type TargetContext = {
@@ -64,6 +65,18 @@ export type TargetContext = {
   label?: string;
   relation: "self" | "ancestor";
   depth: number;
+};
+
+export type TargetContextSummary = {
+  scope?: "tableRow" | "form" | "card" | "dialog" | "section" | "listItem" | "ancestor";
+  heading?: string;
+  nearbyText?: string[];
+  nearbyControls?: string[];
+  sameLabel?: {
+    value: string;
+    index: number;
+    count: number;
+  };
 };
 
 type ScenarioStepBase = {
