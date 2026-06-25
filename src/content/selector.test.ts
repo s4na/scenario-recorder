@@ -124,14 +124,14 @@ describe("createTargetSnapshot", () => {
     document.body.innerHTML = `
       <section>
         <h2>Plans</h2>
-        <div hidden>
-          <button>Archive plan</button>
-        </div>
         <article>
           <h3>Pro plan</h3>
+          <div hidden>
+            <button>Archive plan</button>
+          </div>
           <button id="target">Choose</button>
+          <button>Preview plan</button>
         </article>
-        <button>Preview plan</button>
       </section>
     `;
 
