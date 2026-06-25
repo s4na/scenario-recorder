@@ -23,8 +23,12 @@ function sourceFilesUnder(path: string): string[] {
   });
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 describe("artifact module boundaries", () => {
-  it("keeps app entrypoints off the combined artifact implementation module", () => {
+  it("keeps app runtime code off the scenarioArtifacts compatibility barrel", () => {
     const appSources = [
       ...sourceFilesUnder("src/background"),
       ...sourceFilesUnder("src/content"),
@@ -37,18 +41,20 @@ describe("artifact module boundaries", () => {
   });
 
   it("keeps popup startup code from statically importing heavy artifact modules", () => {
-    const staticPopupImports = [
-      "from \"../shared/playwrightGenerator\"",
-      "from \"../shared/scenarioImport\"",
-      "from \"../shared/scenarioSchema\"",
-      "from \"./downloads\"",
-      "from \"./zip\"",
+    const staticPopupImportSpecifiers = [
+      "../shared/playwrightGenerator",
+      "../shared/scenarioImport",
+      "../shared/scenarioSchema",
+      "./downloads",
+      "./zip",
     ];
 
     for (const path of ["src/popup/App.tsx", "src/popup/main.tsx"]) {
       const source = readSource(path);
-      for (const importText of staticPopupImports) {
-        expect(source, `${path} should lazy-load ${importText}`).not.toContain(importText);
+      for (const specifier of staticPopupImportSpecifiers) {
+        expect(source, `${path} should lazy-load ${specifier}`).not.toMatch(
+          new RegExp(`import\\s+(?:[^"']+\\s+from\\s+)?["']${escapeRegExp(specifier)}["']`),
+        );
       }
     }
   });
