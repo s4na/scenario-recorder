@@ -177,10 +177,9 @@ async function runMinimalRecording({ browser, controlPage, fixturePage, fixtureO
   await fixturePage.goto(`${fixtureOrigin}/fixture?case=minimal`, { waitUntil: "domcontentloaded" });
   await setSettings(controlPage, {
     allowedOrigins: [fixtureOrigin],
-    recordingDetailLevel: "context",
+    recordingDetailLevel: "minimal",
   });
   await controlPage.reload({ waitUntil: "domcontentloaded" });
-  await clickPopup(controlPage, "mode-minimal");
   await waitForAriaPressed(controlPage, "mode-minimal", true);
   await waitForAriaPressed(controlPage, "mode-context", false);
   await fixturePage.bringToFront();
