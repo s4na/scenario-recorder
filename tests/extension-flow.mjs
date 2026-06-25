@@ -1,5 +1,5 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
@@ -123,7 +123,7 @@ try {
     ([entryName, text]) => entryName.endsWith(".spec.ts") && text.includes("waitForURL"),
   );
   assert(runnableSpecEntry !== undefined, "Downloaded ZIP does not include a runnable navigation Playwright spec.");
-  runGeneratedPlaywrightSpec(runnableSpecEntry[1], runnableSpecEntry[0]);
+  await runGeneratedPlaywrightSpec(runnableSpecEntry[1], runnableSpecEntry[0]);
 } finally {
   await browser?.close().catch(() => undefined);
   fixtureServer.server.close();
@@ -454,7 +454,7 @@ async function waitForDownloadedFile(extension, existingFiles = new Set()) {
   throw new Error(`Download with extension ${extension} was not created.`);
 }
 
-function runGeneratedPlaywrightSpec(specText, sourceName) {
+async function runGeneratedPlaywrightSpec(specText, sourceName) {
   const playwrightCli = resolve("node_modules/@playwright/test/cli.js");
   assert(existsSync(playwrightCli), "Playwright CLI is not installed.");
 
@@ -489,31 +489,57 @@ export default defineConfig({
 `,
   );
 
-  const result = spawnSync(
-    process.execPath,
-    [playwrightCli, "test", "--config", configPath],
-    {
-      cwd: generatedPlaywrightDir,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        CHROME_BIN: findChrome(),
-      },
-      timeout: 120_000,
+  const result = await runCommand(process.execPath, [playwrightCli, "test", "--config", configPath], {
+    cwd: generatedPlaywrightDir,
+    env: {
+      ...process.env,
+      CHROME_BIN: findChrome(),
     },
-  );
+    timeout: 120_000,
+  });
 
   assert(
-    !result.error && result.status === 0,
+    result.status === 0,
     [
       `Generated Playwright spec failed: ${sourceName}`,
-      result.error ? `Error: ${result.error.message}` : undefined,
+      result.signal ? `Signal: ${result.signal}` : undefined,
       result.stdout ? `STDOUT:\n${result.stdout}` : undefined,
       result.stderr ? `STDERR:\n${result.stderr}` : undefined,
     ]
       .filter(Boolean)
       .join("\n\n"),
   );
+}
+
+function runCommand(command, args, options) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+    }, options.timeout);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (status, signal) => {
+      clearTimeout(timeout);
+      resolve({ status, signal, stdout, stderr });
+    });
+  });
 }
 
 function parseJsonl(text) {
