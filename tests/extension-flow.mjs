@@ -22,6 +22,7 @@ try {
     executablePath: findChrome(),
     headless: false,
     ignoreDefaultArgs: ["--disable-extensions"],
+    dumpio: process.env.CI === "true",
     timeout: 90_000,
     userDataDir,
     args: [
