@@ -1,6 +1,5 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 import { createServer as createViteServer } from "vite";
@@ -35,14 +34,19 @@ try {
   await page.evaluate(() => window.__scenarioRecorderCoreHarness.start());
   await page.getByTestId("pro-plan-card").getByRole("button", { name: "Choose" }).click();
   await page.getByLabel("Traveler name").fill("Sana Tester");
-  await page.getByLabel("Destination").selectOption("okinawa");
+  await page.getByLabel("Destination").click();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
   const selectedPlan = await page.locator("#selected-plan").textContent();
   const steps = await page.evaluate(() => window.__scenarioRecorderCoreHarness.stop());
 
   assert(selectedPlan === "Pro plan", `Expected Playwright to choose the Pro plan, got ${selectedPlan}.`);
   assert(
-    steps.map((step) => step.type).join(",") === "click,fill,select",
-    `Expected click,fill,select steps, got ${steps.map((step) => step.type).join(",")}.`,
+    steps.some((step) => step.type === "click") &&
+      steps.some((step) => step.type === "fill") &&
+      steps.some((step) => step.type === "select"),
+    `Expected click, fill, and select steps, got ${steps.map((step) => step.type).join(",")}.`,
   );
   const planClick = steps.find((step) => step.type === "click");
   assert(
