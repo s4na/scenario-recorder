@@ -531,6 +531,28 @@ describe("scenario artifacts", () => {
     expect(importedSecretNameCode).not.toContain("getRequiredEnv(\"AWS_SECRET_ACCESS_KEY\")");
   });
 
+  it("prefers labels over verbose roles for form controls", () => {
+    const code = scenarioToPlaywright({
+      ...scenario,
+      steps: [{
+        id: "step_form_label",
+        type: "select",
+        timestamp: 1,
+        url: "https://example.com/settings",
+        value: "okinawa",
+        target: {
+          tagName: "select",
+          selectorCandidates: [
+            { type: "role", value: { role: "combobox", name: "Destination Tokyo Osaka Okinawa" }, confidence: 88 },
+            { type: "label", value: "Destination", confidence: 85 }
+          ]
+        }
+      }]
+    });
+
+    expect(code).toContain("  await page.getByLabel(\"Destination\").selectOption(\"okinawa\");");
+  });
+
   it("generates regexp URL assertions for encoded secret masks", () => {
     expect(scenarioToPlaywright({
       ...scenario,

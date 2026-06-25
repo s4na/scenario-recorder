@@ -708,13 +708,38 @@ function targetToLocator(target: TargetSnapshot | undefined): string | undefined
   if (!target || !Array.isArray(target.selectorCandidates)) {
     return undefined;
   }
-  for (const candidate of target.selectorCandidates) {
+  for (const candidate of sortLocatorCandidates(target.selectorCandidates, target.tagName)) {
     const locator = candidateToLocator(candidate);
     if (locator) {
       return locator;
     }
   }
   return undefined;
+}
+
+function sortLocatorCandidates(candidates: SelectorCandidate[], tagName: string): SelectorCandidate[] {
+  if (!["input", "select", "textarea"].includes(tagName.toLowerCase())) {
+    return candidates;
+  }
+  const priority = new Map<SelectorCandidate["type"], number>([
+    ["label", 0],
+    ["aria-label", 1],
+    ["placeholder", 2],
+    ["data-testid", 3],
+    ["data-test", 4],
+    ["data-cy", 5],
+    ["role", 6],
+    ["id", 7],
+    ["name", 8],
+    ["css", 9],
+    ["xpath", 10],
+    ["text", 11],
+  ]);
+  return [...candidates].sort(
+    (first, second) =>
+      (priority.get(first.type) ?? Number.MAX_SAFE_INTEGER) -
+      (priority.get(second.type) ?? Number.MAX_SAFE_INTEGER)
+  );
 }
 
 function candidateToLocator(candidate: SelectorCandidate): string | undefined {
