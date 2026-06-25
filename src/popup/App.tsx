@@ -366,7 +366,7 @@ export default function App() {
                 )
               }
             >
-              {state.status === "idle" ? "保存してzipダウンロード" : "保存して終了"}
+              {state.status === "idle" ? "保存してzipダウンロード" : "保存して終了・zipDL"}
             </button>
           </div>
         ) : null}
