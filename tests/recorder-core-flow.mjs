@@ -88,11 +88,11 @@ try {
         );
         assert(
           steps.some((step) => step.type === "select" && step.value === "product-research" && step.target?.label === "Primary goal"),
-          "Core recorder did not record a replayable primary goal select value.",
+          `Core recorder did not record a replayable primary goal select value. Select steps: ${describeSelectSteps(steps)}`,
         );
         assert(
           steps.some((step) => step.type === "select" && step.value === "long-text" && step.target?.label === "Answer type"),
-          "Core recorder did not record a replayable answer type select value.",
+          `Core recorder did not record a replayable answer type select value. Select steps: ${describeSelectSteps(steps)}`,
         );
       },
       assertSpec(specText) {
@@ -169,7 +169,7 @@ try {
         );
         assert(
           steps.some((step) => step.type === "select" && step.value === "very-happy" && step.target?.label === "Satisfaction"),
-          "Core recorder did not record a replayable satisfaction select value.",
+          `Core recorder did not record a replayable satisfaction select value. Select steps: ${describeSelectSteps(steps)}`,
         );
       },
       assertSpec(specText) {
@@ -231,6 +231,8 @@ async function chooseSelectOption(page, label, value) {
   for (let index = 0; index < optionIndex; index += 1) {
     await page.keyboard.press("ArrowDown");
   }
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
 }
 
 function assertStepTypes(steps, requiredTypes) {
@@ -238,6 +240,14 @@ function assertStepTypes(steps, requiredTypes) {
   assert(
     missingTypes.length === 0,
     `Expected ${requiredTypes.join(", ")} steps, got ${steps.map((step) => step.type).join(",")}.`,
+  );
+}
+
+function describeSelectSteps(steps) {
+  return JSON.stringify(
+    steps
+      .filter((step) => step.type === "select")
+      .map((step) => ({ label: step.target?.label, value: step.value })),
   );
 }
 
