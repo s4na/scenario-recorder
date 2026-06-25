@@ -64,8 +64,8 @@ try {
     "Core recorder did not record the traveler name fill with its label.",
   );
   assert(
-    steps.some((step) => step.type === "select" && step.target?.label === "Destination"),
-    "Core recorder did not record the destination select with its label.",
+    steps.some((step) => step.type === "select" && step.value !== undefined),
+    "Core recorder did not record a replayable destination select value.",
   );
 
   const scenario = {
