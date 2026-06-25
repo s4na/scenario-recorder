@@ -27,7 +27,7 @@ import {
   shouldReplaceFillStep,
   toIsoNow,
 } from "../shared/utils";
-import { withDerivedSecretVariables } from "../shared/scenarioArtifacts";
+import { withDerivedSecretVariables } from "../shared/secretVariables";
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const TAB_URLS_STORAGE_KEY = "scenarioRecorder.tabUrls";
