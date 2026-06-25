@@ -469,10 +469,7 @@ async function saveCurrentScenario(
   name: string,
 ): Promise<{ scenario: Scenario; state: RecorderState }> {
   return enqueueStateMutation(async () => {
-    const state = await getRecorderState();
-    if (state.status !== "idle") {
-      throw new Error("Recording must be stopped before saving a scenario.");
-    }
+    const state = closeRecordingForSave(await getRecorderState());
     if (state.currentSteps.length === 0) {
       throw new Error("Cannot save a scenario without recorded steps.");
     }
@@ -484,6 +481,26 @@ async function saveCurrentScenario(
     await clearRecorderState();
     return { scenario, state: await getRecorderState() };
   });
+}
+
+function closeRecordingForSave(state: RecorderState): RecorderState {
+  if (state.status === "idle") {
+    return state;
+  }
+  const now = toIsoNow();
+  const sessions = [...state.recordingSessions];
+  const lastSession = sessions[sessions.length - 1];
+  if (lastSession) {
+    sessions[sessions.length - 1] = { ...lastSession, stoppedAt: lastSession.stoppedAt ?? now };
+  } else {
+    sessions.push({ stoppedAt: now });
+  }
+  return {
+    ...state,
+    status: "idle",
+    stoppedAt: state.stoppedAt ?? now,
+    recordingSessions: sessions,
+  };
 }
 
 async function updateStoredScenario(
@@ -891,34 +908,42 @@ async function handleMessage(
   }
 }
 
-chrome.runtime.onMessage.addListener(
-  (message: RuntimeMessage, sender, sendResponse) => {
-    void handleMessage(message, sender)
-      .then(sendResponse)
-      .catch((error: unknown) => {
-        sendResponse({
-          error: error instanceof Error ? error.message : String(error),
-        });
+function handleRuntimeMessage(
+  message: RuntimeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: unknown) => void,
+): true {
+  void handleMessage(message, sender)
+    .then(sendResponse)
+    .catch((error: unknown) => {
+      sendResponse({
+        error: error instanceof Error ? error.message : String(error),
       });
-    return true;
-  },
-);
+    });
+  return true;
+}
+
+chrome.runtime.onMessage.addListener(handleRuntimeMessage);
 
 async function initializeTabUrls(): Promise<void> {
   await loadTabUrls();
 }
 
-chrome.webNavigation.onCommitted.addListener((details) => {
+const handleCommittedNavigation: Parameters<typeof chrome.webNavigation.onCommitted.addListener>[0] = (details) => {
   if (details.frameId !== 0) {
     return;
   }
   void recordTabNavigation(details.tabId, details.url).catch((error: unknown) => {
     console.warn("Scenario Recorder failed to record tab navigation.", error);
   });
-});
+};
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+chrome.webNavigation.onCommitted.addListener(handleCommittedNavigation);
+
+function handleRemovedTab(tabId: number): void {
   void deleteTabUrl(tabId);
-});
+}
+
+chrome.tabs.onRemoved.addListener(handleRemovedTab);
 
 void tabUrlsReady;

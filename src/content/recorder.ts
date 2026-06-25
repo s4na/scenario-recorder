@@ -84,7 +84,7 @@ function initializeRecordingCache(): void {
   void refreshRecordingTargetCache().catch((error: unknown) => {
     markRecordingTargetUnavailable(error, initialRefresh);
   });
-  chrome.storage.onChanged.addListener((changes, areaName) => {
+  function handleRecorderStorageChange(changes: Record<string, chrome.storage.StorageChange>, areaName: string): void {
     if (
       areaName !== "local" ||
       (
@@ -98,7 +98,9 @@ function initializeRecordingCache(): void {
     void refreshRecordingTargetCache().catch((error: unknown) => {
       markRecordingTargetUnavailable(error, refreshSequence);
     });
-  });
+  }
+
+  chrome.storage.onChanged.addListener(handleRecorderStorageChange);
 }
 
 function isRecording(): boolean {
@@ -572,111 +574,93 @@ export function installRecorder(
   if (options.initializeRecordingCache !== false) {
     initializeRecordingCache();
   }
-  document.addEventListener(
-    "pointerdown",
-    (event) => {
+
+  function handleRecorderPointerDown(event: PointerEvent): void {
+    flushBeforeActivation(event, onStep);
+  }
+
+  function handleRecorderKeyDown(event: KeyboardEvent): void {
+    if (event.key === "Enter" || event.key === " ") {
       flushBeforeActivation(event, onStep);
-    },
-    true,
-  );
+    }
+  }
 
-  document.addEventListener(
-    "keydown",
-    (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        flushBeforeActivation(event, onStep);
-      }
-    },
-    true,
-  );
+  function handleRecorderClick(event: MouseEvent): void {
+    if (!event.isTrusted) {
+      return;
+    }
+    if (isRecorderUiEvent(event)) {
+      return;
+    }
+    void flushAndRecordClick(event, onStep);
+  }
 
-  document.addEventListener(
-    "click",
-    (event) => {
-      if (!event.isTrusted) {
-        return;
-      }
-      if (isRecorderUiEvent(event)) {
-        return;
-      }
-      void flushAndRecordClick(event, onStep);
-    },
-    true,
-  );
+  function handleRecorderInput(event: Event): void {
+    if (!event.isTrusted) {
+      return;
+    }
+    if (isRecorderUiEvent(event)) {
+      return;
+    }
+    const target = getComposedElement(event);
+    if (
+      (target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement) &&
+      !isFileInput(target) &&
+      !isHiddenInput(target) &&
+      !isToggleInput(target)
+    ) {
+      scheduleFill(target, onStep);
+    }
+  }
 
-  document.addEventListener(
-    "input",
-    (event) => {
-      if (!event.isTrusted) {
-        return;
-      }
-      if (isRecorderUiEvent(event)) {
-        return;
-      }
-      const target = getComposedElement(event);
-      if (
-        (target instanceof HTMLInputElement ||
-          target instanceof HTMLTextAreaElement) &&
-        !isFileInput(target) &&
-        !isHiddenInput(target) &&
-        !isToggleInput(target)
-      ) {
-        scheduleFill(target, onStep);
-      }
-    },
-    true,
-  );
+  function handleRecorderChange(event: Event): void {
+    if (!event.isTrusted) {
+      return;
+    }
+    if (isRecorderUiEvent(event)) {
+      return;
+    }
+    const target = getComposedElement(event);
+    if (target instanceof HTMLSelectElement) {
+      recordSelect(target, onStep);
+    } else if (
+      target instanceof HTMLElement &&
+      isFillInput(target) &&
+      !isFileInput(target) &&
+      !isHiddenInput(target) &&
+      !isToggleInput(target)
+    ) {
+      scheduleFill(target, onStep);
+    }
+  }
 
-  document.addEventListener(
-    "change",
-    (event) => {
-      if (!event.isTrusted) {
-        return;
-      }
-      if (isRecorderUiEvent(event)) {
-        return;
-      }
-      const target = getComposedElement(event);
-      if (target instanceof HTMLSelectElement) {
-        recordSelect(target, onStep);
-      } else if (
-        target instanceof HTMLElement &&
-        isFillInput(target) &&
-        !isFileInput(target) &&
-        !isHiddenInput(target) &&
-        !isToggleInput(target)
-      ) {
-        scheduleFill(target, onStep);
-      }
-    },
-    true,
-  );
+  function handleRecorderSubmit(event: SubmitEvent): void {
+    if (!event.isTrusted) {
+      return;
+    }
+    void flushBeforeSubmit(event, onStep);
+  }
 
-  document.addEventListener(
-    "submit",
-    (event) => {
-      if (!event.isTrusted) {
-        return;
-      }
-      void flushBeforeSubmit(event, onStep);
-    },
-    true,
-  );
+  function handleRecorderSelectionChange(event: Event): void {
+    if (!event.isTrusted) {
+      return;
+    }
+    scheduleSelectionRecord(onStep);
+  }
 
-  document.addEventListener(
-    "selectionchange",
-    (event) => {
-      if (!event.isTrusted) {
-        return;
-      }
-      scheduleSelectionRecord(onStep);
-    },
-    true,
-  );
-
-  window.addEventListener("pagehide", () => {
+  function handleRecorderPageHide(): void {
     void flushTrackedPendingInputs(onStep);
-  });
+  }
+
+  document.addEventListener("pointerdown", handleRecorderPointerDown, true);
+  document.addEventListener("keydown", handleRecorderKeyDown, true);
+  document.addEventListener("click", handleRecorderClick, true);
+  document.addEventListener("input", handleRecorderInput, true);
+  document.addEventListener("change", handleRecorderChange, true);
+  document.addEventListener("submit", handleRecorderSubmit, true);
+  document.addEventListener("selectionchange", handleRecorderSelectionChange, true);
+  window.addEventListener("pagehide", handleRecorderPageHide);
 }
 
 export async function flushPendingInputs(
