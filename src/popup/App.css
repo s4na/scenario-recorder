@@ -219,8 +219,6 @@ button:hover:not(:disabled) {
 }
 
 button:focus-visible,
-.editFields input:focus-visible,
-.editFields textarea:focus-visible,
 summary:focus-visible {
   outline: 2px solid #76a8d8;
   outline-offset: 2px;
@@ -295,10 +293,10 @@ button.danger {
   background: #f8fbfe;
 }
 
-.stepPreview ol {
+.stepFlow {
   display: grid;
-  gap: 6px;
-  max-height: 132px;
+  gap: 0;
+  max-height: 180px;
   margin: 0;
   padding: 0;
   overflow-y: auto;
@@ -306,25 +304,39 @@ button.danger {
   scrollbar-gutter: stable;
 }
 
-.stepPreview li {
+.stepFlow li {
   display: grid;
-  grid-template-columns: 30px 1fr auto;
-  gap: 8px;
-  align-items: center;
+  grid-template-columns: 24px 1fr;
+  gap: 9px;
+  align-items: start;
+  min-width: 0;
+  padding: 7px 0;
+  border-top: 1px solid #e4ebf3;
+}
+
+.stepFlow li:first-child {
+  border-top: 0;
+}
+
+.stepFlow li span {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: #755600;
+  background: #fef3c7;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stepFlow li div {
+  display: grid;
+  gap: 2px;
   min-width: 0;
 }
 
-.stepPreview li span {
-  padding: 2px 6px;
-  border-radius: 999px;
-  color: #526478;
-  background: #e8eef5;
-  font-size: 11px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.stepPreview li strong {
+.stepFlow li strong {
   min-width: 0;
   overflow: hidden;
   font-size: 12px;
@@ -333,10 +345,13 @@ button.danger {
   white-space: nowrap;
 }
 
-.stepPreview li small {
+.stepFlow li small {
   color: #69788a;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .moreSteps {
@@ -413,24 +428,4 @@ button.danger {
 
 .scenarioActions {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.editFields {
-  display: grid;
-  gap: 6px;
-}
-
-.editFields input,
-.editFields textarea {
-  width: 100%;
-  padding: 7px 8px;
-  border: 1px solid #c4cfdb;
-  border-radius: 6px;
-  color: #18212f;
-  background: #ffffff;
-}
-
-.editFields textarea {
-  min-height: 58px;
-  resize: vertical;
 }

@@ -116,7 +116,10 @@ describe("installRecorder", () => {
       isCollapsed: false,
       rangeCount: 1,
       toString: () => "cancellation policy",
-      getRangeAt: () => ({ commonAncestorContainer: textNode }),
+      getRangeAt: () => ({
+        commonAncestorContainer: textNode,
+        getClientRects: () => [{ x: 10, y: 20, width: 120, height: 18 }],
+      }),
     } as unknown as Selection);
 
     dispatchTrustedListener(listeners, "selectionchange", document.body);
@@ -128,6 +131,7 @@ describe("installRecorder", () => {
       value: "cancellation policy",
       target: expect.objectContaining({ tagName: "p", id: "terms" }),
     });
+    await vi.advanceTimersByTimeAsync(900);
   });
 
   it("ignores events from the recorder overlay", async () => {

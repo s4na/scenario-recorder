@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentMessage } from "../shared/messages";
 import { sendRuntimeMessage } from "../shared/messages";
-import { parseScenarioImportText, scenarioToJsonl, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
+import { parseScenarioImportText, scenarioToJsonl, scenariosToJsonls, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
 import type { RecorderState, Scenario, ScenarioRecorderSettings, ScenarioStep } from "../shared/types";
 import { downloadJson, downloadText, formatTimestampForFile, sanitizeFilePart } from "../shared/utils";
-import { playwrightDownloadPayload } from "./downloads";
 
 const EMPTY_STATE: RecorderState = {
   status: "idle",
@@ -22,25 +21,34 @@ type Notice = {
   text: string;
 };
 
-function scenarioFileName(scenario: Scenario): string {
-  return `${sanitizeFilePart(scenario.name)}.json`;
-}
-
-function allScenariosFileName(): string {
-  return `scenario-recorder-export-${formatTimestampForFile()}.json`;
+function allRecordsJsonlsFileName(): string {
+  return `scenario-records-${formatTimestampForFile()}.jsonls`;
 }
 
 function scenarioJsonlFileName(scenario: Scenario): string {
   return `${sanitizeFilePart(scenario.name)}.jsonl`;
 }
 
-function scenarioPlaywrightFileName(scenario: Scenario): string {
-  return `${sanitizeFilePart(scenario.name)}.spec.ts`;
-}
-
 function truncateText(value: string, maxLength = 34): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function pageLabel(url: string | undefined, title?: string): string {
+  const cleanTitle = title?.trim();
+  if (cleanTitle) {
+    return `${truncateText(cleanTitle, 26)}ページ`;
+  }
+  if (!url) {
+    return "現在のページ";
+  }
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace(/^\/|\/$/g, "");
+    return `${truncateText(path || parsed.host, 26)}ページ`;
+  } catch {
+    return "現在のページ";
+  }
 }
 
 function describeStep(step: ScenarioStep): string {
@@ -58,7 +66,11 @@ function describeStep(step: ScenarioStep): string {
     case "submit":
       return target ? `${target}を送信` : "送信";
     case "navigation":
-      return "ページ遷移";
+      return `${pageLabel(step.toUrl ?? step.url, step.title)}へ移動`;
+    case "goto":
+      return `${pageLabel(step.toUrl ?? step.url, step.title)}へ移動`;
+    case "wait":
+      return "ページの読み込みを待機";
     case "assert":
       return step.assertion?.kind === "title" ? "タイトルを確認" : "URLを確認";
     default:
@@ -83,27 +95,29 @@ function StepSummaryList({
     return null;
   }
   return (
-    <div className="stepPreview" aria-label={title}>
+    <section className="stepPreview" aria-label={title}>
       <div className="sectionHeader compact">
         <h3>{title}</h3>
         <span>{steps.length} steps</span>
       </div>
-      <ol>
+      <ol className="stepFlow">
         {visibleSteps.map((step, index) => (
           <li key={step.id}>
-            <span>{newestFirst ? steps.length - index : index + 1}</span>
-            <strong>{describeStep(step)}</strong>
-            <small>{step.type}</small>
+            <span aria-hidden="true">{newestFirst ? steps.length - index : index + 1}</span>
+            <div>
+              <small>{pageLabel(step.url, step.title)}</small>
+              <strong>{describeStep(step)}</strong>
+            </div>
           </li>
         ))}
       </ol>
       {remainingCount > 0 ? <p className="moreSteps">ほか {remainingCount} steps</p> : null}
-    </div>
+    </section>
   );
 }
 
 function detailLevelLabel(detailLevel: ScenarioRecorderSettings["recordingDetailLevel"]): string {
-  return detailLevel === "context" ? "Codex向け" : "軽量";
+  return detailLevel === "context" ? "詳細に記録" : "軽く記録";
 }
 
 function isContentScriptUnavailableError(message: string): boolean {
@@ -122,10 +136,6 @@ export default function App() {
   const [scenarioName, setScenarioName] = useState("");
   const [allowedOriginsText, setAllowedOriginsText] = useState("");
   const [isEditingAllowedOrigins, setIsEditingAllowedOrigins] = useState(false);
-  const [editingScenarioId, setEditingScenarioId] = useState<string | undefined>();
-  const [editName, setEditName] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editTags, setEditTags] = useState("");
   const [lastSavedScenarioId, setLastSavedScenarioId] = useState<string | undefined>();
   const [notice, setNotice] = useState<Notice | undefined>();
   const [isBusy, setIsBusy] = useState(false);
@@ -188,34 +198,6 @@ export default function App() {
     setScenarios(response.scenarios);
   }
 
-  function beginEditScenario(scenario: Scenario): void {
-    setEditingScenarioId(scenario.id);
-    setEditName(scenario.name);
-    setEditDescription(scenario.description ?? "");
-    setEditTags((scenario.tags ?? []).join(", "));
-  }
-
-  async function saveScenarioEdits(scenario: Scenario): Promise<void> {
-    const response = await sendRuntimeMessage<"UPDATE_SCENARIO">({
-      type: "UPDATE_SCENARIO",
-      payload: {
-        scenarioId: scenario.id,
-        name: editName.trim() || scenario.name,
-        description: editDescription.trim(),
-        tags: editTags.split(",").map((tag) => tag.trim()).filter(Boolean)
-      }
-    });
-    setScenarios(response.scenarios);
-    setEditingScenarioId(undefined);
-  }
-
-  async function executeScenario(scenario: Scenario): Promise<void> {
-    await sendRuntimeMessage<"EXECUTE_SCENARIO">({
-      type: "EXECUTE_SCENARIO",
-      payload: { scenarioId: scenario.id }
-    });
-  }
-
   async function flushActiveTabInputs(): Promise<void> {
     let tabId = state.targetTabId;
     if (tabId === undefined) {
@@ -273,13 +255,13 @@ export default function App() {
         <div className="sectionHeader">
           <div>
             <h2>作る</h2>
-            <p>いま開いているタブの操作を記録</p>
+            <p>いま開いているタブの作業を記録</p>
           </div>
           <span>{detailLevelLabel(settings.recordingDetailLevel)}</span>
         </div>
 
         <label className="field">
-          <span>シナリオ名</span>
+          <span>記録名</span>
           <input
             data-testid="scenario-name"
             value={scenarioName}
@@ -307,7 +289,7 @@ export default function App() {
               }, "記録の詳細度を保存しました")
             }
           >
-            Codex向け
+            詳細に記録
           </button>
           <button
             data-testid="mode-minimal"
@@ -327,7 +309,7 @@ export default function App() {
               }, "記録の詳細度を保存しました")
             }
           >
-            軽量
+            軽く記録
           </button>
         </div>
 
@@ -414,10 +396,10 @@ export default function App() {
                   });
                   setLastSavedScenarioId(response.scenario.id);
                   setScenarioName("");
-                }, "シナリオを保存しました")
+                }, "記録を保存しました")
               }
             >
-              保存してJSONLへ進む
+              記録を保存
             </button>
           </div>
         ) : null}
@@ -427,40 +409,18 @@ export default function App() {
         <section className="section handoffPanel">
           <div className="sectionHeader">
             <div>
-              <h2>渡す</h2>
+              <h2>エクスポート</h2>
               <p>{latestScenario.name}</p>
             </div>
             <span>{latestScenario.steps.length} steps</span>
           </div>
+          <StepSummaryList title="記録の流れ" steps={latestScenario.steps} limit={8} />
           <button
             className="primary"
             onClick={() => downloadText(scenarioJsonlFileName(latestScenario), scenarioToJsonl(latestScenario), "application/x-ndjson;charset=utf-8")}
           >
-            Codex用JSONLをダウンロード
+            この記録をエクスポート
           </button>
-          <div className="supportActions">
-            <button
-              onClick={() =>
-                runAction(() => executeScenario(latestScenario), "シナリオを実行しました")
-              }
-            >
-              実行
-            </button>
-            <button onClick={() => downloadJson(scenarioFileName(latestScenario), latestScenario)}>
-              JSONをダウンロード
-            </button>
-            <button
-              onClick={() =>
-                runAction(async () => {
-                  const payload = playwrightDownloadPayload(latestScenario, settings);
-                  downloadText(scenarioPlaywrightFileName(latestScenario), payload.text, payload.type);
-                })
-              }
-            >
-              Playwrightをダウンロード
-            </button>
-          </div>
-          <StepSummaryList title="ステップ概要" steps={latestScenario.steps} limit={6} />
         </section>
       ) : null}
 
@@ -510,11 +470,11 @@ export default function App() {
                   const exportPayload = await sendRuntimeMessage<"EXPORT_ALL_SCENARIOS">({
                     type: "EXPORT_ALL_SCENARIOS"
                   });
-                  downloadJson(allScenariosFileName(), exportPayload);
-                }, "全シナリオをエクスポートしました")
+                  downloadText(allRecordsJsonlsFileName(), scenariosToJsonls(exportPayload.scenarios), "application/x-ndjson;charset=utf-8");
+                }, "全記録をエクスポートしました")
               }
             >
-              全シナリオをエクスポート
+              全記録をエクスポート
             </button>
             <button disabled={isBusy} onClick={() => importInputRef.current?.click()}>
               インポート
@@ -532,14 +492,14 @@ export default function App() {
             ref={importInputRef}
             className="hiddenInput"
             type="file"
-            accept="application/json,application/x-ndjson,.json,.jsonl"
+            accept="application/json,application/x-ndjson,.json,.jsonl,.jsonls"
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
               if (!file) {
                 return;
               }
-              void runAction(() => importScenarioFile(file), "シナリオをインポートしました");
+              void runAction(() => importScenarioFile(file), "記録をインポートしました");
             }}
           />
         </div>
@@ -548,78 +508,28 @@ export default function App() {
       <section className="section scenarioList">
         <div className="sectionHeader">
           <div>
-            <h2>シナリオ一覧</h2>
-            <p>保存済みシナリオを実行、個別ダウンロード、編集</p>
+            <h2>記録一覧</h2>
+            <p>保存済みの記録を確認、ダウンロード、削除</p>
           </div>
           <span>{scenarios.length}</span>
         </div>
 
         {scenarios.length === 0 ? (
-          <p className="empty">保存済みシナリオはありません。</p>
+          <p className="empty">保存済みの記録はありません。</p>
         ) : (
           <ul>
             {scenarios.map((scenario) => (
               <li key={scenario.id} className="scenarioItem">
                 <div className="scenarioMeta">
-                  {editingScenarioId === scenario.id ? (
-                    <div className="editFields">
-                      <input value={editName} onChange={(event) => setEditName(event.target.value)} />
-                      <textarea
-                        value={editDescription}
-                        onChange={(event) => setEditDescription(event.target.value)}
-                        placeholder="説明"
-                      />
-                      <input value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder="tag-a, tag-b" />
-                    </div>
-                  ) : (
-                    <>
-                      <strong>{scenario.name}</strong>
-                      {scenario.description ? <small>{scenario.description}</small> : null}
-                      {scenario.tags?.length ? <small>{scenario.tags.join(", ")}</small> : null}
-                    </>
-                  )}
+                  <strong>{scenario.name}</strong>
                   <span>{scenario.steps.length} steps</span>
-                  <span>{Object.keys(scenario.variables ?? {}).length} variables</span>
                   <small>作成: {new Date(scenario.createdAt).toLocaleString()}</small>
-                  <small>更新: {new Date(scenario.updatedAt).toLocaleString()}</small>
-                  <StepSummaryList title="ステップ概要" steps={scenario.steps} limit={4} />
+                  <StepSummaryList title="記録の流れ" steps={scenario.steps} limit={4} />
                 </div>
                 <div className="scenarioActions">
-                  <button
-                    className="primary"
-                    onClick={() =>
-                      runAction(() => executeScenario(scenario), "シナリオを実行しました")
-                    }
-                  >
-                    実行
+                  <button className="primary" onClick={() => downloadText(scenarioJsonlFileName(scenario), scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
+                    ダウンロード
                   </button>
-                  <button onClick={() => downloadText(scenarioJsonlFileName(scenario), scenarioToJsonl(scenario), "application/x-ndjson;charset=utf-8")}>
-                    JSONLをダウンロード
-                  </button>
-                  <button onClick={() => downloadJson(scenarioFileName(scenario), scenario)}>
-                    JSONをダウンロード
-                  </button>
-                  <button
-                    onClick={() =>
-                      runAction(async () => {
-                        const payload = playwrightDownloadPayload(scenario, settings);
-                        downloadText(scenarioPlaywrightFileName(scenario), payload.text, payload.type);
-                      })
-                    }
-                  >
-                    Playwrightをダウンロード
-                  </button>
-                  {editingScenarioId === scenario.id ? (
-                    <button
-                      onClick={() =>
-                        runAction(() => saveScenarioEdits(scenario), "シナリオを更新しました")
-                      }
-                    >
-                      編集保存
-                    </button>
-                  ) : (
-                    <button onClick={() => beginEditScenario(scenario)}>編集</button>
-                  )}
                   <button
                     className="danger"
                     onClick={() =>
@@ -631,7 +541,7 @@ export default function App() {
                           });
                           setScenarios(response.scenarios);
                         },
-                        "シナリオを削除しました"
+                        "記録を削除しました"
                       )
                     }
                   >

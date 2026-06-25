@@ -27,7 +27,7 @@ describe("recording overlay", () => {
     const root = getRecordingOverlayRootForTest();
     const text = root?.textContent ?? "";
     const markup = root?.innerHTML ?? "";
-    expect(text).toContain("シナリオ録画中");
+    expect(text).toContain("記録中");
     expect(text).toContain("recording");
     expect(text).toContain("3");
     expect(text).toContain("fill");
@@ -65,7 +65,7 @@ describe("recording overlay", () => {
     expect(host?.dataset.status).toBe("paused");
     expect(host?.shadowRoot).toBeNull();
     const text = getRecordingOverlayRootForTest()?.textContent ?? "";
-    expect(text).toContain("シナリオ一時停止中");
+    expect(text).toContain("記録を一時停止中");
     expect(text).toContain("paused");
   });
 });

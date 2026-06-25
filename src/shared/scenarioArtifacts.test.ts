@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Scenario } from "./types";
-import { parseScenarioImport, parseScenarioImportText, scenarioToJsonl, scenarioToPlaywright, withDerivedSecretVariables } from "./scenarioArtifacts";
+import { parseScenarioImport, parseScenarioImportText, scenarioToJsonl, scenariosToJsonls, scenarioToPlaywright, withDerivedSecretVariables } from "./scenarioArtifacts";
 
 const scenario: Scenario = {
   schemaVersion: "scenario-recorder/v1",
@@ -264,6 +264,28 @@ describe("scenario artifacts", () => {
       description: "",
       tags: [],
     }]);
+  });
+
+  it("exports and imports multiple JSONL scenarios", () => {
+    const secondScenario: Scenario = {
+      ...scenario,
+      id: "scenario_2",
+      name: "second",
+      steps: scenario.steps.slice(0, 1),
+    };
+
+    expect(parseScenarioImportText(scenariosToJsonls([scenario, secondScenario]))).toEqual([
+      {
+        ...scenario,
+        description: "",
+        tags: [],
+      },
+      {
+        ...secondScenario,
+        description: "",
+        tags: [],
+      },
+    ]);
   });
 
   it("exports and imports JSONL recording sessions", () => {

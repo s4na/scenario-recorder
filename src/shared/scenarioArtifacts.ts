@@ -276,6 +276,10 @@ export function scenarioToJsonl(scenario: Scenario): string {
   return scenarioToJsonlLines(scenario).map((line) => JSON.stringify(line)).join("\n");
 }
 
+export function scenariosToJsonls(scenarios: Scenario[]): string {
+  return scenarios.map((scenario) => scenarioToJsonl(scenario)).join("\n");
+}
+
 type ScenarioJsonlLine =
   | {
       kind: "meta";
@@ -417,14 +421,45 @@ export function parseScenarioImportText(text: string): Scenario[] {
     return parseScenarioImport(JSON.parse(text) as unknown);
   } catch (jsonError) {
     try {
-      return [parseScenarioJsonl(text)];
+      return parseScenarioJsonls(text);
     } catch (jsonlError) {
       if (text.split(/\r?\n/).filter((line) => line.trim()).length > 1) {
-        throw jsonlError instanceof Error ? jsonlError : new Error("シナリオJSONLを読み込めませんでした。");
+        throw jsonlError instanceof Error ? jsonlError : new Error("記録JSONLを読み込めませんでした。");
       }
-      throw jsonError instanceof Error ? jsonError : new Error("シナリオを読み込めませんでした。");
+      throw jsonError instanceof Error ? jsonError : new Error("記録を読み込めませんでした。");
     }
   }
+}
+
+function parseScenarioJsonls(text: string): Scenario[] {
+  const groups = splitScenarioJsonlGroups(text);
+  if (groups.length === 0) {
+    throw new Error("scenario-recorder/jsonl/v1 の先頭meta行を含むJSONLを選択してください。");
+  }
+  return groups.map((group) => parseScenarioJsonl(group.join("\n")));
+}
+
+function splitScenarioJsonlGroups(text: string): string[][] {
+  const groups: string[][] = [];
+  let current: string[] = [];
+  for (const line of text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)) {
+    const value = JSON.parse(line) as unknown;
+    if (isScenarioJsonlMeta(value)) {
+      if (current.length > 0) {
+        groups.push(current);
+      }
+      current = [line];
+      continue;
+    }
+    if (current.length === 0) {
+      throw new Error("scenario-recorder/jsonl/v1 の先頭meta行を含むJSONLを選択してください。");
+    }
+    current.push(line);
+  }
+  if (current.length > 0) {
+    groups.push(current);
+  }
+  return groups;
 }
 
 function parseScenarioJsonl(text: string): Scenario {
@@ -786,7 +821,7 @@ function isScenarioJsonlStep(value: unknown): value is Extract<ScenarioJsonlLine
 
 function normalizeScenario(value: unknown): Scenario {
   if (!isScenario(value)) {
-    throw new Error("scenario-recorder/v1 のJSONを選択してください。");
+    throw new Error("scenario-recorder/v1 の記録JSONを選択してください。");
   }
   return withDerivedSecretVariables({
     schemaVersion: value.schemaVersion,
