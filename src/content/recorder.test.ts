@@ -117,9 +117,9 @@ describe("installRecorder", () => {
       rangeCount: 1,
       toString: () => "cancellation policy",
       getRangeAt: () => ({ commonAncestorContainer: textNode }),
-    } as Selection);
+    } as unknown as Selection);
 
-    dispatchTrustedListener(listeners, "selectionchange", document);
+    dispatchTrustedListener(listeners, "selectionchange", document.body);
     await vi.advanceTimersByTimeAsync(130);
 
     expect(steps).toHaveLength(1);
@@ -137,8 +137,8 @@ describe("installRecorder", () => {
         <button type="button">Overlay action</button>
       </div>
     `;
-    const host = document.getElementById("scenario-recorder-status-overlay");
-    const button = document.querySelector("button");
+    const host = document.getElementById("scenario-recorder-status-overlay") as HTMLElement;
+    const button = document.querySelector("button") as HTMLButtonElement;
 
     dispatchTrustedListener(listeners, "click", button, {
       composedPath: () => [button, host, document.body, document],
