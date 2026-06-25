@@ -124,7 +124,7 @@ export const SCENARIO_JSON_SCHEMA = {
         required: ["id", "type", "timestamp", "url"],
         properties: {
           id: { type: "string" },
-          type: { enum: ["click", "fill", "select", "submit", "navigation", "goto", "wait", "assert"] },
+          type: { enum: ["click", "fill", "select", "selection", "submit", "navigation", "goto", "wait", "assert"] },
           timestamp: { type: "number" },
           url: { type: "string" },
           title: { type: "string" },
@@ -231,6 +231,10 @@ export const SCENARIO_JSON_SCHEMA = {
             then: { required: ["value"], properties: { value: { type: "string" } } }
           },
           {
+            if: { properties: { type: { const: "selection" } } },
+            then: { required: ["value"], properties: { value: { type: "string" } } }
+          },
+          {
             if: { properties: { type: { const: "select" } } },
             then: {
               required: ["value"],
@@ -246,7 +250,7 @@ export const SCENARIO_JSON_SCHEMA = {
             then: { required: ["assertion"] }
           },
           {
-            if: { properties: { type: { enum: ["click", "fill", "select", "submit", "navigation", "goto", "wait"] } } },
+            if: { properties: { type: { enum: ["click", "fill", "select", "selection", "submit", "navigation", "goto", "wait"] } } },
             then: { not: { required: ["assertion"] } }
           }
         ],
@@ -556,6 +560,9 @@ function stepToPlaywright(step: ScenarioStep, previousStep: ScenarioStep | undef
     }
     return ["  // Unsupported assertion step"];
   }
+  if (step.type === "selection") {
+    return [`  // Selected text: ${JSON.stringify(step.value)}`];
+  }
   const selector = targetToLocator(step.target);
   if (!selector) {
     return [`  // Skipped ${step.type}: no selector candidate`];
@@ -853,6 +860,7 @@ function isScenarioStepType(value: unknown): value is ScenarioStep["type"] {
     value === "click" ||
     value === "fill" ||
     value === "select" ||
+    value === "selection" ||
     value === "submit" ||
     value === "navigation" ||
     value === "goto" ||
@@ -862,7 +870,7 @@ function isScenarioStepType(value: unknown): value is ScenarioStep["type"] {
 }
 
 function isValidStepValueForType(type: ScenarioStep["type"], value: unknown): boolean {
-  if (type === "fill") {
+  if (type === "fill" || type === "selection") {
     return typeof value === "string";
   }
   if (type === "select") {

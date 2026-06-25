@@ -26,6 +26,7 @@ type PendingFillSend = {
 };
 
 const RETRY_DELAY_MS = 300;
+const OVERLAY_HOST_ID = "scenario-recorder-status-overlay";
 const pendingInputs = new Map<
   HTMLInputElement | HTMLTextAreaElement,
   PendingInput
@@ -42,6 +43,9 @@ let cachedRecordingDetailLevel: RecordingDetailLevel = "minimal";
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
 let recordingTargetRefreshSequence = 0;
+let selectionTimer: number | undefined;
+let lastSelectionSignature = "";
+let lastSelectionTimestamp = 0;
 const replayingSubmits = new WeakSet<HTMLFormElement>();
 
 function createStepId(): string {
@@ -186,12 +190,25 @@ function getComposedElement(event: Event): HTMLElement | undefined {
     .find((item): item is HTMLElement => item instanceof HTMLElement);
 }
 
+function isRecorderUiElement(element: HTMLElement): boolean {
+  return element.id === OVERLAY_HOST_ID || Boolean(element.closest(`#${OVERLAY_HOST_ID}`));
+}
+
+function isRecorderUiEvent(event: Event): boolean {
+  return event
+    .composedPath()
+    .some((item) => item instanceof HTMLElement && isRecorderUiElement(item));
+}
+
 async function recordClick(
   event: MouseEvent,
   onStep: StepHandler,
 ): Promise<void> {
   const targetElement = getComposedElement(event);
   if (!targetElement) {
+    return;
+  }
+  if (isRecorderUiElement(targetElement)) {
     return;
   }
 
@@ -238,6 +255,9 @@ async function flushAndRecordClick(
 
 function flushBeforeActivation(event: Event, onStep: StepHandler): void {
   if (!isRecording()) {
+    return;
+  }
+  if (isRecorderUiEvent(event)) {
     return;
   }
   const target = getComposedElement(event);
@@ -453,6 +473,84 @@ function recordSelect(element: HTMLSelectElement, onStep: StepHandler): void {
   });
 }
 
+function selectedInputText(
+  element: HTMLInputElement | HTMLTextAreaElement,
+): string | undefined {
+  const start = element.selectionStart;
+  const end = element.selectionEnd;
+  if (start === null || end === null || start === end) {
+    return undefined;
+  }
+  return element.value.slice(Math.min(start, end), Math.max(start, end));
+}
+
+function currentSelection(): { text: string; target: HTMLElement } | undefined {
+  const activeElement = document.activeElement;
+  if (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement
+  ) {
+    const text = selectedInputText(activeElement)?.replace(/\s+/g, " ").trim();
+    if (text) {
+      return { text, target: activeElement };
+    }
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return undefined;
+  }
+  const text = selection.toString().replace(/\s+/g, " ").trim();
+  if (!text) {
+    return undefined;
+  }
+  const container = selection.getRangeAt(0).commonAncestorContainer;
+  const target = container instanceof HTMLElement ? container : container.parentElement;
+  if (!target || isRecorderUiElement(target)) {
+    return undefined;
+  }
+  return { text, target };
+}
+
+function recordSelection(onStep: StepHandler): void {
+  if (!isRecording()) {
+    return;
+  }
+  const selected = currentSelection();
+  if (!selected) {
+    return;
+  }
+  const signature = `${location.href}:${selected.target.tagName}:${selected.target.id}:${selected.text}`;
+  const now = Date.now();
+  if (signature === lastSelectionSignature && now - lastSelectionTimestamp < 1000) {
+    return;
+  }
+  lastSelectionSignature = signature;
+  lastSelectionTimestamp = now;
+  void Promise.resolve(
+    onStep({
+      id: createStepId(),
+      ...createBaseStep("selection"),
+      target: createTargetSnapshot(selected.target, { includeContext: shouldRecordTargetContext() }),
+      value: selected.text,
+    }),
+  ).catch((error: unknown) => {
+    console.warn("Scenario Recorder failed to record text selection.", error);
+  });
+}
+
+function scheduleSelectionRecord(onStep: StepHandler): void {
+  if (!isRecording()) {
+    return;
+  }
+  if (selectionTimer !== undefined) {
+    window.clearTimeout(selectionTimer);
+  }
+  selectionTimer = window.setTimeout(() => {
+    selectionTimer = undefined;
+    recordSelection(onStep);
+  }, 120);
+}
+
 export function installRecorder(onStep: StepHandler): void {
   initializeRecordingCache();
   document.addEventListener(
@@ -479,6 +577,9 @@ export function installRecorder(onStep: StepHandler): void {
       if (!event.isTrusted) {
         return;
       }
+      if (isRecorderUiEvent(event)) {
+        return;
+      }
       void flushAndRecordClick(event, onStep);
     },
     true,
@@ -488,6 +589,9 @@ export function installRecorder(onStep: StepHandler): void {
     "input",
     (event) => {
       if (!event.isTrusted) {
+        return;
+      }
+      if (isRecorderUiEvent(event)) {
         return;
       }
       const target = getComposedElement(event);
@@ -508,6 +612,9 @@ export function installRecorder(onStep: StepHandler): void {
     "change",
     (event) => {
       if (!event.isTrusted) {
+        return;
+      }
+      if (isRecorderUiEvent(event)) {
         return;
       }
       const target = getComposedElement(event);
@@ -533,6 +640,17 @@ export function installRecorder(onStep: StepHandler): void {
         return;
       }
       void flushBeforeSubmit(event, onStep);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "selectionchange",
+    (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+      scheduleSelectionRecord(onStep);
     },
     true,
   );

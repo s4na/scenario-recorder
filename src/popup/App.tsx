@@ -38,6 +38,11 @@ function scenarioPlaywrightFileName(scenario: Scenario): string {
   return `${sanitizeFilePart(scenario.name)}.spec.ts`;
 }
 
+function truncateText(value: string, maxLength = 34): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
 function describeStep(step: ScenarioStep): string {
   const targetName = step.target?.label ?? step.target?.ariaLabel ?? step.target?.text ?? step.target?.placeholder;
   const target = targetName ? `「${targetName}」` : step.target?.tagName?.toLowerCase();
@@ -48,6 +53,8 @@ function describeStep(step: ScenarioStep): string {
       return target ? `${target}に入力` : "入力";
     case "select":
       return target ? `${target}を選択` : "選択";
+    case "selection":
+      return typeof step.value === "string" ? `「${truncateText(step.value)}」を文字選択` : "文字選択";
     case "submit":
       return target ? `${target}を送信` : "送信";
     case "navigation":
@@ -57,6 +64,42 @@ function describeStep(step: ScenarioStep): string {
     default:
       return step.type;
   }
+}
+
+function StepSummaryList({
+  title,
+  steps,
+  newestFirst = false,
+  limit = 5,
+}: {
+  title: string;
+  steps: ScenarioStep[];
+  newestFirst?: boolean;
+  limit?: number;
+}) {
+  const visibleSteps = newestFirst ? steps.slice(-limit).reverse() : steps.slice(0, limit);
+  const remainingCount = Math.max(steps.length - visibleSteps.length, 0);
+  if (steps.length === 0) {
+    return null;
+  }
+  return (
+    <div className="stepPreview" aria-label={title}>
+      <div className="sectionHeader compact">
+        <h3>{title}</h3>
+        <span>{steps.length} steps</span>
+      </div>
+      <ol>
+        {visibleSteps.map((step, index) => (
+          <li key={step.id}>
+            <span>{newestFirst ? steps.length - index : index + 1}</span>
+            <strong>{describeStep(step)}</strong>
+            <small>{step.type}</small>
+          </li>
+        ))}
+      </ol>
+      {remainingCount > 0 ? <p className="moreSteps">ほか {remainingCount} steps</p> : null}
+    </div>
+  );
 }
 
 function detailLevelLabel(detailLevel: ScenarioRecorderSettings["recordingDetailLevel"]): string {
@@ -99,8 +142,6 @@ export default function App() {
     () => scenarios.find((scenario) => scenario.id === lastSavedScenarioId) ?? scenarios[0],
     [lastSavedScenarioId, scenarios],
   );
-  const recentSteps = state.currentSteps.slice(-5).reverse();
-
   const statusLabel = useMemo(() => {
     if (state.status === "recording") return "記録中";
     if (state.status === "paused") return "一時停止";
@@ -356,22 +397,7 @@ export default function App() {
           </button>
         </div>
 
-        {state.currentSteps.length > 0 ? (
-          <div className="stepPreview" aria-label="現在の記録">
-            <div className="sectionHeader compact">
-              <h3>今回の記録</h3>
-              <span>{state.currentSteps.length} steps</span>
-            </div>
-            <ol>
-              {recentSteps.map((step) => (
-                <li key={step.id}>
-                  <span>{step.type}</span>
-                  <strong>{describeStep(step)}</strong>
-                </li>
-              ))}
-            </ol>
-          </div>
-        ) : null}
+        <StepSummaryList title="今回の記録" steps={state.currentSteps} newestFirst />
 
         {state.status === "idle" && state.currentSteps.length > 0 ? (
           <div className="savePanel">
@@ -434,6 +460,7 @@ export default function App() {
               Playwrightをダウンロード
             </button>
           </div>
+          <StepSummaryList title="ステップ概要" steps={latestScenario.steps} limit={6} />
         </section>
       ) : null}
 
@@ -555,6 +582,7 @@ export default function App() {
                   <span>{Object.keys(scenario.variables ?? {}).length} variables</span>
                   <small>作成: {new Date(scenario.createdAt).toLocaleString()}</small>
                   <small>更新: {new Date(scenario.updatedAt).toLocaleString()}</small>
+                  <StepSummaryList title="ステップ概要" steps={scenario.steps} limit={4} />
                 </div>
                 <div className="scenarioActions">
                   <button

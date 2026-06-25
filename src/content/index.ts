@@ -235,7 +235,7 @@ async function executeStep(step: ScenarioStep): Promise<void> {
     }
     return;
   }
-  if (step.type === "wait" || step.type === "navigation" || step.type === "goto") {
+  if (step.type === "wait" || step.type === "navigation" || step.type === "goto" || step.type === "selection") {
     return;
   }
   const target = findTarget(step.target);

@@ -7,6 +7,7 @@ Webアプリ上のユーザー操作をChrome拡張で記録し、CodexやPlaywr
 - Manifest V3のChrome拡張
 - popup UIから記録開始、一時停止、再開、停止、クリア、保存
 - click、input、select、submit、通常遷移、SPA遷移の記録
+- ページ上の文字選択の記録
 - `chrome.storage.local` への複数シナリオ保存
 - 保存済みシナリオ一覧の表示
 - 保存済みシナリオの実行

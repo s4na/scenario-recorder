@@ -308,7 +308,7 @@ button.danger {
 
 .stepPreview li {
   display: grid;
-  grid-template-columns: 68px 1fr;
+  grid-template-columns: 30px 1fr auto;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -331,6 +331,18 @@ button.danger {
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.stepPreview li small {
+  color: #69788a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.moreSteps {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 11px;
 }
 
 .savePanel {

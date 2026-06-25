@@ -4,6 +4,7 @@ export type ScenarioStepType =
   | "click"
   | "fill"
   | "select"
+  | "selection"
   | "submit"
   | "navigation"
   | "goto"
@@ -83,12 +84,17 @@ export type ScenarioStep =
       assertion?: never;
     })
   | (ScenarioStepBase & {
+      type: "selection";
+      value: string;
+      assertion?: never;
+    })
+  | (ScenarioStepBase & {
       type: "select";
       value: string | string[];
       assertion?: never;
     })
   | (ScenarioStepBase & {
-      type: Exclude<ScenarioStepType, "assert" | "fill" | "select">;
+      type: Exclude<ScenarioStepType, "assert" | "fill" | "select" | "selection">;
       value?: never;
       assertion?: never;
     })
@@ -158,6 +164,7 @@ export type RecorderState = {
   pausedAt?: string;
   resumedAt?: string;
   stoppedAt?: string;
+  startUrl?: string;
   targetTabId?: number;
   targetWindowId?: number;
   startedAtMs?: number;
