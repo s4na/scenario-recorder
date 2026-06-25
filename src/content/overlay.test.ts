@@ -22,6 +22,7 @@ describe("recording overlay", () => {
 
     const host = document.getElementById("scenario-recorder-status-overlay");
     expect(host).not.toBeNull();
+    expect(host?.dataset.status).toBe("recording");
     expect(host?.shadowRoot).toBeNull();
     const root = getRecordingOverlayRootForTest();
     const text = root?.textContent ?? "";
@@ -61,6 +62,7 @@ describe("recording overlay", () => {
     });
 
     const host = document.getElementById("scenario-recorder-status-overlay");
+    expect(host?.dataset.status).toBe("paused");
     expect(host?.shadowRoot).toBeNull();
     const text = getRecordingOverlayRootForTest()?.textContent ?? "";
     expect(text).toContain("シナリオ一時停止中");

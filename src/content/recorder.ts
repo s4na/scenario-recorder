@@ -282,7 +282,7 @@ async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promi
       );
     });
   }
-  await recordSubmit(form, onStep).catch((error: unknown) => {
+  await recordSubmit(form, onStep, submitter).catch((error: unknown) => {
     console.warn(
       "Scenario Recorder could not record form submit.",
       error,
@@ -295,11 +295,16 @@ async function flushBeforeSubmit(event: SubmitEvent, onStep: StepHandler): Promi
 async function recordSubmit(
   form: HTMLFormElement,
   onStep: StepHandler,
+  submitter?: HTMLElement,
 ): Promise<void> {
+  const includeContext = shouldRecordTargetContext();
   await onStep({
     id: createStepId(),
     ...createBaseStep("submit"),
-    target: createTargetSnapshot(form, { includeContext: shouldRecordTargetContext() }),
+    target: createTargetSnapshot(form, { includeContext }),
+    ...(submitter
+      ? { submitter: createTargetSnapshot(submitter, { includeContext }) }
+      : {}),
   });
 }
 

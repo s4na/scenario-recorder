@@ -66,8 +66,18 @@ jobs:
       - name: Build extension
         run: npm run build
 
+      - name: Install Chrome for Testing
+        run: |
+          npx -y @puppeteer/browsers@3.0.4 install chrome@150.0.7871.24 --path "${RUNNER_TEMP}/chrome"
+          CHROME_BIN="$(find "${RUNNER_TEMP}/chrome" -type f \( -name chrome -o -name 'Google Chrome for Testing' \) | head -n 1)"
+          test -x "${CHROME_BIN}"
+          echo "CHROME_BIN=${CHROME_BIN}" >> "${GITHUB_ENV}"
+
       - name: Validate Chrome extension package
         run: npm run validate:extension
+
+      - name: Run extension flow E2E
+        run: xvfb-run -a npm run test:e2e
 
       - name: Audit production dependencies
         run: npm audit --omit=dev

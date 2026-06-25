@@ -36,13 +36,13 @@ const secretScenario: Scenario = {
 };
 
 describe("popup downloads", () => {
-  it("passes target-domain settings into Playwright generation", () => {
+  it("passes target-origin settings into Playwright generation", () => {
     expect(() =>
       playwrightDownloadPayload(secretScenario, {
         allowedOrigins: ["https://app.example"],
         recordingDetailLevel: "minimal"
       })
-    ).toThrow("outside target domain");
+    ).toThrow("outside target origin");
     expect(playwrightDownloadPayload(secretScenario, {
       allowedOrigins: ["https://attacker.example"],
       recordingDetailLevel: "minimal"

@@ -524,8 +524,8 @@ describe("scenario artifacts", () => {
     );
   });
 
-  it("blocks Playwright generation with secret variables outside allowed target domains", () => {
-    expect(() => scenarioToPlaywright(scenario)).toThrow("Set target domains");
+  it("blocks Playwright generation with secret variables outside allowed target origins", () => {
+    expect(() => scenarioToPlaywright(scenario)).toThrow("Set target origins");
     expect(() =>
       scenarioToPlaywright({
         ...scenario,
@@ -542,7 +542,7 @@ describe("scenario artifacts", () => {
           }
         }]
       }, { allowedOrigins: ["https://example.com"] })
-    ).toThrow("outside target domain");
+    ).toThrow("outside target origin");
   });
 
   it("derives secret variables from masked values", () => {
