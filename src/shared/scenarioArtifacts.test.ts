@@ -554,6 +554,29 @@ describe("scenario artifacts", () => {
     expect(code).toContain("  await page.getByLabel(\"Destination\").selectOption(\"okinawa\");");
   });
 
+  it("keeps stable test ids ahead of placeholders for form controls", () => {
+    const code = scenarioToPlaywright({
+      ...scenario,
+      variables: {},
+      steps: [{
+        id: "step_test_id_input",
+        type: "fill",
+        timestamp: 1,
+        url: "https://example.com/settings",
+        value: "northstar",
+        target: {
+          tagName: "input",
+          selectorCandidates: [
+            { type: "placeholder", value: "Search", confidence: 80 },
+            { type: "data-testid", value: "customer-search", confidence: 95 }
+          ]
+        }
+      }]
+    });
+
+    expect(code).toContain("  await page.getByTestId(\"customer-search\").fill(\"northstar\");");
+  });
+
   it("disambiguates repeated controls with their recorded same-label position", () => {
     const code = scenarioToPlaywright({
       ...scenario,
@@ -578,6 +601,33 @@ describe("scenario artifacts", () => {
     });
 
     expect(code).toContain("  await page.getByRole(\"button\", { name: \"Choose\" }).nth(1).click();");
+  });
+
+  it("does not apply same-label nth to stable test id locators", () => {
+    const code = scenarioToPlaywright({
+      ...scenario,
+      variables: {},
+      steps: [{
+        id: "step_repeated_button_with_test_id",
+        type: "click",
+        timestamp: 1,
+        url: "https://example.com/plans",
+        target: {
+          tagName: "button",
+          text: "Choose",
+          selectorCandidates: [
+            { type: "data-testid", value: "Choose", confidence: 95 }
+          ],
+          contextSummary: {
+            heading: "Pro plan",
+            sameLabel: { value: "Choose", index: 2, count: 2 }
+          }
+        }
+      }]
+    });
+
+    expect(code).toContain("  await page.getByTestId(\"Choose\").click();");
+    expect(code).not.toContain("page.getByTestId(\"Choose\").nth(1).click()");
   });
 
   it("generates regexp URL assertions for encoded secret masks", () => {

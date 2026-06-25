@@ -724,10 +724,10 @@ function sortLocatorCandidates(candidates: SelectorCandidate[], tagName: string)
   const priority = new Map<SelectorCandidate["type"], number>([
     ["label", 0],
     ["aria-label", 1],
-    ["placeholder", 2],
-    ["data-testid", 3],
-    ["data-test", 4],
-    ["data-cy", 5],
+    ["data-testid", 2],
+    ["data-test", 3],
+    ["data-cy", 4],
+    ["placeholder", 5],
     ["role", 6],
     ["id", 7],
     ["name", 8],
@@ -793,7 +793,7 @@ function disambiguateLocator(
 }
 
 function candidateMatchesSameLabel(candidate: SelectorCandidate, value: string): boolean {
-  if (typeof candidate.value === "string") {
+  if (["aria-label", "label", "text"].includes(candidate.type) && typeof candidate.value === "string") {
     return candidate.value === value;
   }
   return (
