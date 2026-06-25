@@ -91,6 +91,59 @@ describe("createTargetSnapshot", () => {
     );
   });
 
+  it("ignores controls hidden by ancestors when counting repeated labels", () => {
+    document.body.innerHTML = `
+      <div hidden>
+        <button>Choose</button>
+      </div>
+      <section>
+        <article>
+          <h2>Free plan</h2>
+          <button>Choose</button>
+        </article>
+        <article>
+          <h2>Pro plan</h2>
+          <button id="target">Choose</button>
+        </article>
+      </section>
+    `;
+
+    const target = document.querySelector("#target");
+    expect(target).not.toBeNull();
+
+    const snapshot = createTargetSnapshot(target as HTMLButtonElement, { includeContext: true });
+
+    expect(snapshot.contextSummary?.sameLabel).toEqual({
+      value: "Choose",
+      index: 2,
+      count: 2,
+    });
+  });
+
+  it("ignores nearby controls hidden by ancestors", () => {
+    document.body.innerHTML = `
+      <section>
+        <h2>Plans</h2>
+        <article>
+          <h3>Pro plan</h3>
+          <div hidden>
+            <button>Archive plan</button>
+          </div>
+          <button id="target">Choose</button>
+          <button>Preview plan</button>
+        </article>
+      </section>
+    `;
+
+    const target = document.querySelector("#target");
+    expect(target).not.toBeNull();
+
+    const snapshot = createTargetSnapshot(target as HTMLButtonElement, { includeContext: true });
+
+    expect(snapshot.contextSummary?.nearbyControls).toEqual(["Preview plan"]);
+    expect(snapshot.contextSummary?.nearbyControls).not.toContain("Archive plan");
+  });
+
   it("redacts sensitive values from all context string fields", () => {
     document.body.innerHTML = `
       <section

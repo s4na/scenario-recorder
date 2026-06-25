@@ -482,9 +482,14 @@ function addUniqueText(values: string[], value: string | null | undefined): void
 }
 
 function isVisibleElement(element: HTMLElement): boolean {
-  if (element.getAttribute("aria-hidden") === "true" || element.hidden) {
-    return false;
+  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+    if (current.getAttribute("aria-hidden") === "true" || current.hidden) {
+      return false;
+    }
+    const style = window.getComputedStyle(current);
+    if (style.display === "none") {
+      return false;
+    }
   }
-  const style = window.getComputedStyle(element);
-  return style.display !== "none" && style.visibility !== "hidden";
+  return window.getComputedStyle(element).visibility !== "hidden";
 }

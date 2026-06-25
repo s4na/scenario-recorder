@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Hono Survey Studio</title>
+    <style>
+      body { background: #f5f7fb; color: #17202a; font-family: Inter, ui-sans-serif, system-ui, sans-serif; margin: 0; }
+      main { display: grid; gap: 28px; margin: 0 auto; max-width: 1080px; padding: 32px; }
+      header { display: grid; gap: 8px; }
+      h1, h2, h3, p { margin: 0; }
+      section { display: grid; gap: 14px; }
+      .workspace-grid, .forms-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .card, .panel { background: #fff; border: 1px solid #d9e1ea; border-radius: 8px; padding: 16px; }
+      .card { display: grid; gap: 10px; }
+      .meta { color: #52616f; font-size: 13px; }
+      .badge { background: #eef6f2; border-radius: 999px; color: #17623a; display: inline-flex; font-size: 12px; padding: 3px 8px; width: max-content; }
+      .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 0.7fr); gap: 14px; }
+      label { display: grid; gap: 6px; margin-block: 10px; }
+      button, input, select, textarea { border: 1px solid #b8c4d0; border-radius: 6px; box-sizing: border-box; font: inherit; min-height: 36px; padding: 6px 10px; }
+      button { background: #101827; color: #fff; cursor: pointer; width: max-content; }
+      input, select, textarea { background: #fff; color: #17202a; width: 100%; }
+      textarea { min-height: 76px; resize: vertical; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="badge">Hono.js survey demo</p>
+        <h1>Hono Survey Studio</h1>
+        <p class="meta">Create lightweight surveys, collect answers, and inspect results from a small edge-ready app.</p>
+      </header>
+
+      <section aria-labelledby="signup-heading">
+        <h2 id="signup-heading">1. Register a workspace</h2>
+        <div class="workspace-grid" aria-label="Workspace types">
+          <article class="card" data-testid="team-workspace-card">
+            <h3>Team workspace</h3>
+            <p class="meta">For internal pulse checks and team retrospectives.</p>
+            <button type="button">Create account</button>
+          </article>
+          <article class="card" data-testid="research-workspace-card">
+            <h3>Research workspace</h3>
+            <p class="meta">For customer interviews, beta cohorts, and product research.</p>
+            <button type="button">Create account</button>
+          </article>
+        </div>
+        <p id="selected-workspace">No workspace selected</p>
+        <section id="registration-panel" class="panel" hidden>
+          <h3>Create workspace</h3>
+          <label>
+            User name
+            <input id="user-name" name="userName" autocomplete="name">
+          </label>
+          <label>
+            Work email
+            <input id="work-email" name="workEmail" autocomplete="email">
+          </label>
+          <label for="primary-goal">Primary goal</label>
+          <select id="primary-goal" name="primaryGoal">
+            <option value="team-feedback">Team feedback</option>
+            <option value="product-research">Product research</option>
+            <option value="event-rsvp">Event RSVP</option>
+          </select>
+          <button type="button" id="continue-registration">Continue</button>
+        </section>
+      </section>
+
+      <section id="builder-section" aria-labelledby="builder-heading" hidden>
+        <h2 id="builder-heading">2. Create a survey form</h2>
+        <div class="split">
+          <section class="panel">
+            <h3>Form builder</h3>
+            <label>
+              Survey title
+              <input id="survey-title" name="surveyTitle" placeholder="Customer onboarding survey">
+            </label>
+            <label>
+              Question prompt
+              <textarea id="question-prompt" name="questionPrompt" placeholder="What should we ask?"></textarea>
+            </label>
+            <label for="answer-type">Answer type</label>
+            <select id="answer-type" name="answerType">
+              <option value="short-text">Short text</option>
+              <option value="rating">Rating</option>
+              <option value="long-text">Long text</option>
+            </select>
+            <button type="button" id="publish-form">Publish form</button>
+          </section>
+          <aside class="panel">
+            <h3>Workspace status</h3>
+            <p id="workspace-owner">No owner</p>
+            <p id="published-status">No survey published</p>
+          </aside>
+        </div>
+      </section>
+
+      <section aria-labelledby="answer-heading">
+        <h2 id="answer-heading">3. Answer a published form</h2>
+        <div class="forms-grid" aria-label="Published forms">
+          <article class="card" data-testid="employee-checkin-form-card">
+            <h3>Employee check-in</h3>
+            <p class="meta">Weekly internal health check.</p>
+            <button type="button">Answer</button>
+          </article>
+          <article class="card" data-testid="product-feedback-form-card">
+            <h3>Product feedback</h3>
+            <p class="meta">Customer beta feedback for the onboarding flow.</p>
+            <button type="button">Answer</button>
+          </article>
+        </div>
+        <p id="selected-form">No form selected</p>
+        <section id="answer-panel" class="panel" hidden>
+          <h3>Submit response</h3>
+          <label>
+            Respondent name
+            <input id="respondent-name" name="respondentName" autocomplete="name">
+          </label>
+          <label for="satisfaction">Satisfaction</label>
+          <select id="satisfaction" name="satisfaction">
+            <option value="neutral">Neutral</option>
+            <option value="happy">Happy</option>
+            <option value="very-happy">Very happy</option>
+          </select>
+          <label>
+            Feedback
+            <textarea id="feedback" name="feedback" placeholder="What should improve?"></textarea>
+          </label>
+          <button type="button" id="submit-answer">Submit answer</button>
+        </section>
+        <section class="panel" aria-label="Survey results">
+          <h3>Results</h3>
+          <p id="response-count">0 responses</p>
+          <p id="last-response">No responses yet</p>
+        </section>
+      </section>
+    </main>
+    <script type="module">
+      import { flushPendingInputs, installRecorder } from "/src/content/recorder.ts";
+      import { scenarioToPlaywright } from "/src/shared/scenarioArtifacts.ts";
+
+      const steps = [];
+      let recording = false;
+
+      function onStep(step) {
+        steps.push(structuredClone(step));
+      }
+
+      installRecorder(onStep, {
+        initializeRecordingCache: false,
+        isRecording: () => recording,
+      });
+
+      for (const button of document.querySelectorAll(".workspace-grid .card button")) {
+        button.addEventListener("click", () => {
+          const heading = button.closest(".card")?.querySelector("h3")?.textContent?.trim() ?? "";
+          document.querySelector("#selected-workspace").textContent = heading;
+          document.querySelector("#registration-panel").hidden = heading !== "Research workspace";
+        });
+      }
+
+      document.querySelector("#continue-registration").addEventListener("click", () => {
+        const userName = document.querySelector("#user-name").value.trim();
+        document.querySelector("#workspace-owner").textContent = userName ? `${userName}'s research workspace` : "Research workspace";
+        document.querySelector("#builder-section").hidden = false;
+      });
+
+      document.querySelector("#publish-form").addEventListener("click", () => {
+        const title = document.querySelector("#survey-title").value.trim() || "Untitled survey";
+        document.querySelector("#published-status").textContent = `${title} is live`;
+      });
+
+      for (const button of document.querySelectorAll(".forms-grid .card button")) {
+        button.addEventListener("click", () => {
+          const heading = button.closest(".card")?.querySelector("h3")?.textContent?.trim() ?? "";
+          document.querySelector("#selected-form").textContent = heading;
+          document.querySelector("#answer-panel").hidden = heading !== "Product feedback";
+        });
+      }
+
+      document.querySelector("#submit-answer").addEventListener("click", () => {
+        const respondent = document.querySelector("#respondent-name").value.trim() || "Anonymous";
+        const satisfaction = document.querySelector("#satisfaction").value;
+        document.querySelector("#response-count").textContent = "1 response";
+        document.querySelector("#last-response").textContent = `${respondent} submitted ${satisfaction}`;
+      });
+
+      function resetFixture() {
+        document.querySelector("#selected-workspace").textContent = "No workspace selected";
+        document.querySelector("#registration-panel").hidden = true;
+        document.querySelector("#user-name").value = "";
+        document.querySelector("#work-email").value = "";
+        document.querySelector("#primary-goal").value = "team-feedback";
+        document.querySelector("#builder-section").hidden = true;
+        document.querySelector("#workspace-owner").textContent = "No owner";
+        document.querySelector("#survey-title").value = "";
+        document.querySelector("#question-prompt").value = "";
+        document.querySelector("#answer-type").value = "short-text";
+        document.querySelector("#published-status").textContent = "No survey published";
+        document.querySelector("#selected-form").textContent = "No form selected";
+        document.querySelector("#answer-panel").hidden = true;
+        document.querySelector("#respondent-name").value = "";
+        document.querySelector("#satisfaction").value = "neutral";
+        document.querySelector("#feedback").value = "";
+        document.querySelector("#response-count").textContent = "0 responses";
+        document.querySelector("#last-response").textContent = "No responses yet";
+      }
+
+      window.__scenarioRecorderCoreHarness = {
+        start() {
+          steps.length = 0;
+          resetFixture();
+          recording = true;
+        },
+        async stop() {
+          await flushPendingInputs(onStep, { throwOnError: true });
+          recording = false;
+          return structuredClone(steps);
+        },
+        reset() {
+          resetFixture();
+        },
+        toPlaywright(scenario) {
+          return scenarioToPlaywright(scenario);
+        },
+      };
+    </script>
+  </body>
+</html>

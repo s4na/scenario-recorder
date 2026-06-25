@@ -708,13 +708,38 @@ function targetToLocator(target: TargetSnapshot | undefined): string | undefined
   if (!target || !Array.isArray(target.selectorCandidates)) {
     return undefined;
   }
-  for (const candidate of target.selectorCandidates) {
+  for (const candidate of sortLocatorCandidates(target.selectorCandidates, target.tagName)) {
     const locator = candidateToLocator(candidate);
     if (locator) {
-      return locator;
+      return disambiguateLocator(locator, candidate, target);
     }
   }
   return undefined;
+}
+
+function sortLocatorCandidates(candidates: SelectorCandidate[], tagName: string): SelectorCandidate[] {
+  if (!["input", "select", "textarea"].includes(tagName.toLowerCase())) {
+    return candidates;
+  }
+  const priority = new Map<SelectorCandidate["type"], number>([
+    ["label", 0],
+    ["aria-label", 1],
+    ["data-testid", 2],
+    ["data-test", 3],
+    ["data-cy", 4],
+    ["placeholder", 5],
+    ["role", 6],
+    ["id", 7],
+    ["name", 8],
+    ["css", 9],
+    ["xpath", 10],
+    ["text", 11],
+  ]);
+  return [...candidates].sort(
+    (first, second) =>
+      (priority.get(first.type) ?? Number.MAX_SAFE_INTEGER) -
+      (priority.get(second.type) ?? Number.MAX_SAFE_INTEGER)
+  );
 }
 
 function candidateToLocator(candidate: SelectorCandidate): string | undefined {
@@ -750,6 +775,32 @@ function candidateToLocator(candidate: SelectorCandidate): string | undefined {
     return `page.locator(${JSON.stringify(String(candidate.value))})`;
   }
   return undefined;
+}
+
+function disambiguateLocator(
+  locator: string,
+  candidate: SelectorCandidate,
+  target: TargetSnapshot,
+): string {
+  const sameLabel = target.contextSummary?.sameLabel;
+  if (!sameLabel || sameLabel.count <= 1 || sameLabel.index <= 0) {
+    return locator;
+  }
+  if (!candidateMatchesSameLabel(candidate, sameLabel.value)) {
+    return locator;
+  }
+  return `${locator}.nth(${sameLabel.index - 1})`;
+}
+
+function candidateMatchesSameLabel(candidate: SelectorCandidate, value: string): boolean {
+  if (["aria-label", "label"].includes(candidate.type) && typeof candidate.value === "string") {
+    return candidate.value === value;
+  }
+  return (
+    candidate.type === "role" &&
+    isRoleValue(candidate.value) &&
+    candidate.value.name === value
+  );
 }
 
 function cssEscape(value: string): string {

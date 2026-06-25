@@ -11,6 +11,7 @@
     "lint": "oxlint --deny-warnings",
     "test": "vitest run",
     "test:e2e": "node tests/extension-flow.mjs",
+    "test:recorder-core": "node tests/recorder-core-flow.mjs",
     "build": "tsc --noEmit && vite build",
     "validate:extension": "node scripts/validate-extension.mjs",
     "preview": "vite preview"
@@ -20,6 +21,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@types/chrome": "^0.0.287",
     "@types/node": "^25.9.3",
     "@types/react": "^19.0.2",

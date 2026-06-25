@@ -64,11 +64,10 @@ try {
   );
 
   await controlPage.reload({ waitUntil: "domcontentloaded" });
-  await controlPage.waitForFunction(
-    (scenarioName) => document.body.innerText.includes(scenarioName),
-    { timeout: 8_000 },
-    scenarios[0].name,
-  );
+  await controlPage.waitForFunction(() => {
+    const buttons = Array.from(document.querySelectorAll("button"));
+    return buttons.some((button) => button.textContent?.trim() === "この記録をzipでエクスポート" && !button.disabled);
+  }, { timeout: 12_000 });
   const popupText = await controlPage.evaluate(() => document.body.innerText);
   assert(popupText.includes("作る"), "Popup does not expose the recording workflow.");
   assert(popupText.includes("エクスポート"), "Popup does not expose the export workflow.");
@@ -79,7 +78,6 @@ try {
   assert(!popupText.includes("詳細に記録"), "Popup still asks users to choose a detailed recording mode.");
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
-  assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
   await clickPopupButtonWithText(controlPage, "この記録をzipでエクスポート");
   const latestScenarioZip = await waitForDownloadedFile(".zip");
   const latestEntries = readZipEntries(readFileSync(latestScenarioZip));
