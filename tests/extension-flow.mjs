@@ -127,6 +127,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   ]);
   await clickPopup(controlPage, "stop-recording");
   await waitForRecorderStatus(controlPage, "idle");
+  await controlPage.reload({ waitUntil: "domcontentloaded" });
   await clickPopup(controlPage, "save-scenario");
   await waitForScenarioCount(controlPage, 1);
 
