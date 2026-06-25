@@ -20,7 +20,7 @@ let browser;
 try {
   browser = await puppeteer.launch({
     executablePath: findChrome(),
-    headless: false,
+    headless: process.env.CI === "true" ? true : false,
     ignoreDefaultArgs: ["--disable-extensions"],
     dumpio: process.env.CI === "true",
     pipe: true,
