@@ -230,6 +230,7 @@ export default function App() {
       type: "SAVE_SCENARIO",
       payload: { name: scenarioName.trim() }
     });
+    downloadScenarioZip(response.scenario);
     setLastSavedScenarioId(response.scenario.id);
     setScenarioName("");
   }
@@ -357,10 +358,15 @@ export default function App() {
               className="primary"
               disabled={!canSave || isBusy}
               onClick={() =>
-                runAction(saveCurrentRecording, state.status === "idle" ? "記録を保存しました" : "保存して記録を終了しました")
+                runAction(
+                  saveCurrentRecording,
+                  state.status === "idle"
+                    ? "記録を保存してzipをダウンロードしました"
+                    : "保存して終了し、zipをダウンロードしました",
+                )
               }
             >
-              {state.status === "idle" ? "記録を保存" : "保存して終了"}
+              {state.status === "idle" ? "保存してzipダウンロード" : "保存して終了"}
             </button>
           </div>
         ) : null}

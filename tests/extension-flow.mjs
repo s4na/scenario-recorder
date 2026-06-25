@@ -160,10 +160,27 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await clickPopup(controlPage, "stop-recording");
   await waitForRecorderStatus(controlPage, "idle");
   await controlPage.reload({ waitUntil: "domcontentloaded" });
+  const existingSaveZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
   await clickPopup(controlPage, "save-scenario");
+  const savedScenarioZip = await waitForDownloadedFile(".zip", existingSaveZipFiles);
   await waitForScenarioCount(controlPage, 1);
 
   const [scenario] = await getScenarios(controlPage);
+  const savedEntries = readZipEntries(readFileSync(savedScenarioZip));
+  const savedJsonlName = Object.keys(savedEntries).find((entry) => entry.endsWith(".jsonl"));
+  const savedSpecName = Object.keys(savedEntries).find((entry) => entry.endsWith(".spec.ts"));
+  assert(savedJsonlName !== undefined && savedSpecName !== undefined, "Saved scenario ZIP is missing JSONL or Playwright files.");
+  const savedJsonlLines = parseJsonl(savedEntries[savedJsonlName]);
+  assert(
+    savedJsonlLines[0]?.kind === "meta" && savedJsonlLines[0]?.name === scenario.name,
+    "Saved scenario ZIP JSONL does not match the saved scenario.",
+  );
+  assert(
+    savedJsonlLines.some((line) => line.kind === "step" && line.type === "fill") &&
+      savedEntries[savedSpecName].includes("import { test, expect } from '@playwright/test';") &&
+      savedEntries[savedSpecName].includes("await page."),
+    "Saved scenario ZIP does not include the recorded JSONL and generated Playwright code.",
+  );
   assert(isDefaultScenarioName(scenario.name), "Unnamed context scenario did not use the timestamp default name.");
   assert(
     scenario.startUrl === `${fixtureOrigin}/fixture?case=context`,
