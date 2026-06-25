@@ -31,47 +31,140 @@ try {
   const page = await browser.newPage();
   await page.goto(harnessUrl, { waitUntil: "domcontentloaded" });
 
+  const scenarioDefinitions = [
+    {
+      id: "booking_plan_flow",
+      name: "booking plan records repeated button, fill, and select",
+      async run() {
+        await page.getByTestId("pro-plan-card").getByRole("button", { name: "Choose" }).click();
+        await page.getByLabel("Traveler name").fill("Sana Tester");
+        await chooseSelectOption(page, "Destination", 2);
+      },
+      async assertPageState() {
+        const selectedPlan = await page.locator("#selected-plan").textContent();
+        assert(selectedPlan === "Pro plan", `Expected Playwright to choose the Pro plan, got ${selectedPlan}.`);
+      },
+      assertSteps(steps) {
+        assertStepTypes(steps, ["click", "fill", "select"]);
+        const planClick = steps.find((step) => step.type === "click");
+        assert(
+          planClick?.target?.contextSummary?.heading === "Pro plan",
+          "Core recorder did not keep the clicked plan card heading context.",
+        );
+        assertSameLabel(planClick, "Choose", 2, 2);
+        assert(
+          steps.some((step) => step.type === "fill" && step.value === "Sana Tester" && step.target?.label === "Traveler name"),
+          "Core recorder did not record the traveler name fill with its label.",
+        );
+        assert(
+          steps.some((step) => step.type === "select" && step.value !== undefined),
+          "Core recorder did not record a replayable destination select value.",
+        );
+      },
+      assertSpec(specText) {
+        assert(
+          specText.includes("page.getByRole(\"button\", { name: \"Choose\" }).nth(1).click()"),
+          "Generated Playwright did not disambiguate the repeated Choose button.",
+        );
+        assert(specText.includes(".fill(\"Sana Tester\")"), "Generated Playwright did not include the traveler fill.");
+        assert(specText.includes(".selectOption("), "Generated Playwright did not include the destination select.");
+      },
+    },
+    {
+      id: "project_settings_flow",
+      name: "project settings records another repeated button, fill, and select",
+      async run() {
+        await page.getByTestId("beta-project-card").getByRole("button", { name: "Edit" }).click();
+        await page.getByLabel("Project alias").fill("migration-beta");
+        await chooseSelectOption(page, "Priority", 2);
+      },
+      async assertPageState() {
+        const selectedProject = await page.locator("#selected-project").textContent();
+        assert(selectedProject === "Beta migration", `Expected Playwright to edit Beta migration, got ${selectedProject}.`);
+      },
+      assertSteps(steps) {
+        assertStepTypes(steps, ["click", "fill", "select"]);
+        const editClick = steps.find((step) => step.type === "click");
+        assert(
+          editClick?.target?.contextSummary?.heading === "Beta migration",
+          "Core recorder did not keep the clicked project card heading context.",
+        );
+        assertSameLabel(editClick, "Edit", 2, 2);
+        assert(
+          steps.some((step) => step.type === "fill" && step.value === "migration-beta" && step.target?.label === "Project alias"),
+          "Core recorder did not record the project alias fill with its label.",
+        );
+        assert(
+          steps.some((step) => step.type === "select" && step.value !== undefined),
+          "Core recorder did not record a replayable priority select value.",
+        );
+      },
+      assertSpec(specText) {
+        assert(
+          specText.includes("page.getByRole(\"button\", { name: \"Edit\" }).nth(1).click()"),
+          "Generated Playwright did not disambiguate the repeated Edit button.",
+        );
+        assert(specText.includes(".fill(\"migration-beta\")"), "Generated Playwright did not include the project alias fill.");
+        assert(specText.includes(".selectOption("), "Generated Playwright did not include the priority select.");
+      },
+    },
+  ];
+
+  for (const definition of scenarioDefinitions) {
+    const steps = await recordScenario(page, definition);
+    const scenario = createScenario(definition, origin, harnessUrl, steps);
+    const specText = await page.evaluate(
+      (nextScenario) => window.__scenarioRecorderCoreHarness.toPlaywright(nextScenario),
+      scenario,
+    );
+    definition.assertSpec(specText);
+    await runGeneratedPlaywrightSpec(definition.id, specText);
+  }
+} finally {
+  await browser?.close().catch(() => undefined);
+  await server?.close().catch(() => undefined);
+  rmSync(generatedPlaywrightDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+async function recordScenario(page, definition) {
   await page.evaluate(() => window.__scenarioRecorderCoreHarness.start());
-  await page.getByTestId("pro-plan-card").getByRole("button", { name: "Choose" }).click();
-  await page.getByLabel("Traveler name").fill("Sana Tester");
-  await page.getByLabel("Destination").click();
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("Enter");
-  const selectedPlan = await page.locator("#selected-plan").textContent();
+  await definition.run();
+  await definition.assertPageState();
   const steps = await page.evaluate(() => window.__scenarioRecorderCoreHarness.stop());
+  definition.assertSteps(steps);
+  return steps;
+}
 
-  assert(selectedPlan === "Pro plan", `Expected Playwright to choose the Pro plan, got ${selectedPlan}.`);
-  assert(
-    steps.some((step) => step.type === "click") &&
-      steps.some((step) => step.type === "fill") &&
-      steps.some((step) => step.type === "select"),
-    `Expected click, fill, and select steps, got ${steps.map((step) => step.type).join(",")}.`,
-  );
-  const planClick = steps.find((step) => step.type === "click");
-  assert(
-    planClick?.target?.contextSummary?.heading === "Pro plan",
-    "Core recorder did not keep the clicked card heading context.",
-  );
-  assert(
-    planClick?.target?.contextSummary?.sameLabel?.value === "Choose" &&
-      planClick.target.contextSummary.sameLabel.index === 2 &&
-      planClick.target.contextSummary.sameLabel.count === 2,
-    "Core recorder did not mark the clicked button among repeated controls.",
-  );
-  assert(
-    steps.some((step) => step.type === "fill" && step.value === "Sana Tester" && step.target?.label === "Traveler name"),
-    "Core recorder did not record the traveler name fill with its label.",
-  );
-  assert(
-    steps.some((step) => step.type === "select" && step.value !== undefined),
-    "Core recorder did not record a replayable destination select value.",
-  );
+async function chooseSelectOption(page, label, downCount) {
+  await page.getByLabel(label).click();
+  for (let index = 0; index < downCount; index += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+  await page.keyboard.press("Enter");
+}
 
-  const scenario = {
+function assertStepTypes(steps, requiredTypes) {
+  const missingTypes = requiredTypes.filter((type) => !steps.some((step) => step.type === type));
+  assert(
+    missingTypes.length === 0,
+    `Expected ${requiredTypes.join(", ")} steps, got ${steps.map((step) => step.type).join(",")}.`,
+  );
+}
+
+function assertSameLabel(step, value, index, count) {
+  assert(
+    step?.target?.contextSummary?.sameLabel?.value === value &&
+      step.target.contextSummary.sameLabel.index === index &&
+      step.target.contextSummary.sameLabel.count === count,
+    `Core recorder did not mark ${value} as item ${index} of ${count} among repeated controls.`,
+  );
+}
+
+function createScenario(definition, origin, harnessUrl, steps) {
+  return {
     schemaVersion: "scenario-recorder/v1",
-    id: "recorder_core_flow",
-    name: "recorder-core-flow",
+    id: definition.id,
+    name: definition.name,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
     startUrl: harnessUrl,
@@ -86,27 +179,14 @@ try {
       userAgent: "playwright",
     },
   };
-  const specText = await page.evaluate(
-    (nextScenario) => window.__scenarioRecorderCoreHarness.toPlaywright(nextScenario),
-    scenario,
-  );
-  assert(
-    specText.includes("page.getByRole(\"button\", { name: \"Choose\" }).nth(1).click()"),
-    "Generated Playwright did not disambiguate the repeated Choose button.",
-  );
-  await runGeneratedPlaywrightSpec(specText);
-} finally {
-  await browser?.close().catch(() => undefined);
-  await server?.close().catch(() => undefined);
-  rmSync(generatedPlaywrightDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-async function runGeneratedPlaywrightSpec(specText) {
+async function runGeneratedPlaywrightSpec(scenarioId, specText) {
   const playwrightCli = resolve("node_modules/@playwright/test/cli.js");
   assert(existsSync(playwrightCli), "Playwright CLI is not installed.");
 
-  const specPath = resolve(generatedPlaywrightDir, "generated.spec.ts");
-  const configPath = resolve(generatedPlaywrightDir, "playwright.config.mjs");
+  const specPath = resolve(generatedPlaywrightDir, `${scenarioId}.spec.ts`);
+  const configPath = resolve(generatedPlaywrightDir, `${scenarioId}.config.mjs`);
   writeFileSync(specPath, specText);
   writeFileSync(
     configPath,
@@ -114,7 +194,7 @@ async function runGeneratedPlaywrightSpec(specText) {
 
 export default defineConfig({
   testDir: ".",
-  testMatch: /generated\\.spec\\.ts/,
+  testMatch: /${escapeRegExp(scenarioId)}\\.spec\\.ts/,
   workers: 1,
   reporter: [["line"]],
   use: {
@@ -141,7 +221,7 @@ export default defineConfig({
   assert(
     result.status === 0,
     [
-      "Generated recorder-core Playwright spec failed.",
+      `Generated recorder-core Playwright spec failed for ${scenarioId}.`,
       result.signal ? `Signal: ${result.signal}` : undefined,
       result.stdout ? `STDOUT:\n${result.stdout}` : undefined,
       result.stderr ? `STDERR:\n${result.stderr}` : undefined,
@@ -198,6 +278,10 @@ function findChrome() {
     fail(`Chrome executable was not found. Checked: ${candidates.join(", ")}`);
   }
   return found;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function assert(condition, message) {
