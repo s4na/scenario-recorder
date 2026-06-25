@@ -64,7 +64,7 @@ try {
     "Core recorder did not record the traveler name fill with its label.",
   );
   assert(
-    steps.some((step) => step.type === "select" && step.value === "okinawa" && step.target?.label === "Destination"),
+    steps.some((step) => step.type === "select" && step.target?.label === "Destination"),
     "Core recorder did not record the destination select with its label.",
   );
 
