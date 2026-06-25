@@ -23,6 +23,7 @@ try {
     headless: false,
     ignoreDefaultArgs: ["--disable-extensions"],
     dumpio: process.env.CI === "true",
+    pipe: true,
     timeout: 90_000,
     userDataDir,
     args: [
@@ -34,7 +35,6 @@ try {
       "--load-extension=" + extensionDir,
       "--no-first-run",
       "--no-default-browser-check",
-      "--remote-debugging-address=127.0.0.1",
       "--window-size=1280,900",
     ],
   });
