@@ -1,16 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentMessage } from "../shared/messages";
 import { sendRuntimeMessage } from "../shared/messages";
-import { parseScenarioImportText, SCENARIO_JSON_SCHEMA } from "../shared/scenarioArtifacts";
 import type { RecorderState, Scenario, ScenarioRecorderSettings, ScenarioStep } from "../shared/types";
 import { downloadBlob, downloadJson } from "../shared/utils";
-import {
-  allScenariosZipEntries,
-  allScenariosZipFileName,
-  scenarioZipEntries,
-  scenarioZipFileName
-} from "./downloads";
-import { createZipBlob } from "./zip";
 
 const EMPTY_STATE: RecorderState = {
   status: "idle",
@@ -185,6 +177,7 @@ export default function App() {
 
   async function importScenarioFile(file: File): Promise<void> {
     const text = await file.text();
+    const { parseScenarioImportText } = await import("../shared/scenarioImport");
     const importedScenarios = parseScenarioImportText(text);
     const response = await sendRuntimeMessage<"IMPORT_SCENARIOS">({
       type: "IMPORT_SCENARIOS",
@@ -217,7 +210,11 @@ export default function App() {
     }
   }
 
-  function downloadScenarioZip(scenario: Scenario): void {
+  async function downloadScenarioZip(scenario: Scenario): Promise<void> {
+    const [{ scenarioZipEntries, scenarioZipFileName }, { createZipBlob }] = await Promise.all([
+      import("./downloads"),
+      import("./zip"),
+    ]);
     downloadBlob(
       scenarioZipFileName(scenario),
       createZipBlob(scenarioZipEntries(scenario, settings)),
@@ -230,7 +227,7 @@ export default function App() {
       type: "SAVE_SCENARIO",
       payload: { name: scenarioName.trim() }
     });
-    downloadScenarioZip(response.scenario);
+    await downloadScenarioZip(response.scenario);
     setLastSavedScenarioId(response.scenario.id);
     setScenarioName("");
   }
@@ -437,6 +434,10 @@ export default function App() {
                   const exportPayload = await sendRuntimeMessage<"EXPORT_ALL_SCENARIOS">({
                     type: "EXPORT_ALL_SCENARIOS"
                   });
+                  const [{ allScenariosZipEntries, allScenariosZipFileName }, { createZipBlob }] = await Promise.all([
+                    import("./downloads"),
+                    import("./zip"),
+                  ]);
                   downloadBlob(
                     allScenariosZipFileName(),
                     createZipBlob(allScenariosZipEntries(exportPayload.scenarios, settings)),
@@ -452,7 +453,10 @@ export default function App() {
             <button
               disabled={isBusy}
               onClick={() =>
-                downloadJson("scenario-recorder.schema.json", SCENARIO_JSON_SCHEMA)
+                runAction(async () => {
+                  const { SCENARIO_JSON_SCHEMA } = await import("../shared/scenarioSchema");
+                  downloadJson("scenario-recorder.schema.json", SCENARIO_JSON_SCHEMA);
+                }, "JSON Schemaをダウンロードしました")
               }
             >
               JSON Schema

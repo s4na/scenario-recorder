@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import * as scenarioArtifacts from "./scenarioArtifacts";
+import { parseScenarioImport, parseScenarioImportText } from "./scenarioImport";
+import { scenarioToJsonl, scenariosToJsonls } from "./scenarioJsonl";
+import { scenarioToPlaywright } from "./playwrightGenerator";
+import { SCENARIO_JSON_SCHEMA } from "./scenarioSchema";
+import { withDerivedSecretVariables } from "./secretVariables";
 import type { Scenario } from "./types";
-import { parseScenarioImport, parseScenarioImportText, scenarioToJsonl, scenariosToJsonls, scenarioToPlaywright, withDerivedSecretVariables } from "./scenarioArtifacts";
 
 const scenario: Scenario = {
   schemaVersion: "scenario-recorder/v1",
@@ -211,6 +216,16 @@ const scenario: Scenario = {
 };
 
 describe("scenario artifacts", () => {
+  it("keeps the compatibility artifact barrel wired to the focused modules", () => {
+    expect(scenarioArtifacts.SCENARIO_JSON_SCHEMA).toBe(SCENARIO_JSON_SCHEMA);
+    expect(scenarioArtifacts.parseScenarioImport).toBe(parseScenarioImport);
+    expect(scenarioArtifacts.parseScenarioImportText).toBe(parseScenarioImportText);
+    expect(scenarioArtifacts.scenarioToJsonl).toBe(scenarioToJsonl);
+    expect(scenarioArtifacts.scenariosToJsonls).toBe(scenariosToJsonls);
+    expect(scenarioArtifacts.scenarioToPlaywright).toBe(scenarioToPlaywright);
+    expect(scenarioArtifacts.withDerivedSecretVariables).toBe(withDerivedSecretVariables);
+  });
+
   it("exports steps as JSONL", () => {
     const lines = scenarioToJsonl(scenario).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
 

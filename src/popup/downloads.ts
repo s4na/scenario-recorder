@@ -1,4 +1,5 @@
-import { scenarioToJsonl, scenarioToPlaywright } from "../shared/scenarioArtifacts";
+import { scenarioToPlaywright } from "../shared/playwrightGenerator";
+import { scenarioToJsonl } from "../shared/scenarioJsonl";
 import type { Scenario, ScenarioRecorderSettings } from "../shared/types";
 import { formatTimestampForFile, sanitizeFilePart } from "../shared/utils";
 
