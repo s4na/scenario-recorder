@@ -5,8 +5,8 @@
     <title>Recorder Core Harness</title>
     <style>
       body { font-family: system-ui, sans-serif; margin: 32px; }
-      main { display: grid; gap: 20px; max-width: 720px; }
-      .plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      main { display: grid; gap: 28px; max-width: 820px; }
+      .plans, .projects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
       .card { border: 1px solid #ccd5df; padding: 16px; }
       label { display: grid; gap: 6px; margin-block: 10px; }
       button, input, select { min-height: 34px; font: inherit; }
@@ -16,32 +16,66 @@
   <body>
     <main>
       <h1>Recorder Core Harness</h1>
-      <section class="plans" aria-label="Plans">
-        <article class="card" data-testid="basic-plan-card">
-          <h2>Basic plan</h2>
-          <p>For quick checks.</p>
-          <button type="button">Choose</button>
-        </article>
-        <article class="card" data-testid="pro-plan-card">
-          <h2>Pro plan</h2>
-          <p>For serious bookings.</p>
-          <button type="button">Choose</button>
-        </article>
+      <section aria-labelledby="booking-heading">
+        <h2 id="booking-heading">Booking plans</h2>
+        <section class="plans" aria-label="Plans">
+          <article class="card" data-testid="basic-plan-card">
+            <h3>Basic plan</h3>
+            <p>For quick checks.</p>
+            <button type="button">Choose</button>
+          </article>
+          <article class="card" data-testid="pro-plan-card">
+            <h3>Pro plan</h3>
+            <p>For serious bookings.</p>
+            <button type="button">Choose</button>
+          </article>
+        </section>
+        <p id="selected-plan">No plan selected</p>
+        <section id="traveler-details" hidden>
+          <label>
+            Traveler name
+            <input id="traveler-name" name="travelerName" autocomplete="name">
+          </label>
+          <label>
+            Destination
+            <select id="destination" name="destination">
+              <option value="tokyo">Tokyo</option>
+              <option value="osaka">Osaka</option>
+              <option value="okinawa">Okinawa</option>
+            </select>
+          </label>
+        </section>
       </section>
-      <p id="selected-plan">No plan selected</p>
-      <section id="traveler-details" hidden>
-        <label>
-          Traveler name
-          <input id="traveler-name" name="travelerName" autocomplete="name">
-        </label>
-        <label>
-          Destination
-          <select id="destination" name="destination">
-            <option value="tokyo">Tokyo</option>
-            <option value="osaka">Osaka</option>
-            <option value="okinawa">Okinawa</option>
-          </select>
-        </label>
+
+      <section aria-labelledby="project-heading">
+        <h2 id="project-heading">Project settings</h2>
+        <section class="projects" aria-label="Projects">
+          <article class="card" data-testid="alpha-project-card">
+            <h3>Alpha launch</h3>
+            <p>Customer rollout checklist.</p>
+            <button type="button">Edit</button>
+          </article>
+          <article class="card" data-testid="beta-project-card">
+            <h3>Beta migration</h3>
+            <p>Internal migration checklist.</p>
+            <button type="button">Edit</button>
+          </article>
+        </section>
+        <p id="selected-project">No project selected</p>
+        <section id="project-details" hidden>
+          <label>
+            Project alias
+            <input id="project-alias" name="projectAlias" placeholder="Short name">
+          </label>
+          <label>
+            Priority
+            <select id="priority" name="priority">
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </label>
+        </section>
       </section>
     </main>
     <script type="module">
@@ -60,27 +94,46 @@
         isRecording: () => recording,
       });
 
-      for (const button of document.querySelectorAll(".card button")) {
+      for (const button of document.querySelectorAll(".plans .card button")) {
         button.addEventListener("click", () => {
-          const heading = button.closest(".card")?.querySelector("h2")?.textContent?.trim() ?? "";
+          const heading = button.closest(".card")?.querySelector("h3")?.textContent?.trim() ?? "";
           document.querySelector("#selected-plan").textContent = heading;
           document.querySelector("#traveler-details").hidden = heading !== "Pro plan";
         });
       }
 
+      for (const button of document.querySelectorAll(".projects .card button")) {
+        button.addEventListener("click", () => {
+          const heading = button.closest(".card")?.querySelector("h3")?.textContent?.trim() ?? "";
+          document.querySelector("#selected-project").textContent = heading;
+          document.querySelector("#project-details").hidden = heading !== "Beta migration";
+        });
+      }
+
+      function resetFixture() {
+        document.querySelector("#selected-plan").textContent = "No plan selected";
+        document.querySelector("#traveler-details").hidden = true;
+        document.querySelector("#traveler-name").value = "";
+        document.querySelector("#destination").value = "tokyo";
+        document.querySelector("#selected-project").textContent = "No project selected";
+        document.querySelector("#project-details").hidden = true;
+        document.querySelector("#project-alias").value = "";
+        document.querySelector("#priority").value = "normal";
+      }
+
       window.__scenarioRecorderCoreHarness = {
         start() {
           steps.length = 0;
+          resetFixture();
           recording = true;
-          document.querySelector("#selected-plan").textContent = "No plan selected";
-          document.querySelector("#traveler-details").hidden = true;
-          document.querySelector("#traveler-name").value = "";
-          document.querySelector("#destination").value = "tokyo";
         },
         async stop() {
           await flushPendingInputs(onStep, { throwOnError: true });
           recording = false;
           return structuredClone(steps);
+        },
+        reset() {
+          resetFixture();
         },
         toPlaywright(scenario) {
           return scenarioToPlaywright(scenario);
