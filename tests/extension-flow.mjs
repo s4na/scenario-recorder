@@ -72,7 +72,6 @@ try {
   assert(popupText.includes("記録一覧"), "Popup does not expose the record list.");
   assert(popupText.includes("記録の流れ"), "Popup does not show saved record step summaries.");
   assert(popupText.includes("この記録をエクスポート"), "Popup does not expose one-record export.");
-  assert(popupText.includes("全記録をエクスポート"), "Popup does not expose all-record export.");
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
   assert(popupText.includes(scenarios[0].name), "Popup does not show the latest saved scenario.");
@@ -84,6 +83,11 @@ try {
   assert(
     latestJsonlLines.some((line) => line.kind === "step" && line.type === "fill"),
     "Downloaded JSONL does not include the recorded fill step.",
+  );
+  await openPopupDetailsWithText(controlPage, "対象と管理");
+  assert(
+    await controlPage.evaluate(() => document.body.innerText.includes("全記録をエクスポート")),
+    "Popup does not expose all-record export.",
   );
   await clickPopupButtonWithText(controlPage, "全記録をエクスポート");
   const allJsonls = await waitForDownloadedFile(".jsonls");
@@ -302,6 +306,26 @@ async function clickPopupButtonWithText(controlPage, text) {
       throw new Error(`Button was not found: ${buttonText}`);
     }
     button.click();
+  }, text);
+}
+
+async function openPopupDetailsWithText(controlPage, text) {
+  await controlPage.bringToFront();
+  await controlPage.waitForFunction((summaryText) => {
+    const summaries = Array.from(document.querySelectorAll("summary"));
+    return summaries.some((summary) => summary.textContent?.trim() === summaryText);
+  }, { timeout: 8_000 }, text);
+  await controlPage.evaluate((summaryText) => {
+    const summary = Array.from(document.querySelectorAll("summary"))
+      .find((candidate) => candidate.textContent?.trim() === summaryText);
+    if (!(summary instanceof HTMLElement)) {
+      throw new Error(`Summary was not found: ${summaryText}`);
+    }
+    const details = summary.closest("details");
+    if (!(details instanceof HTMLDetailsElement)) {
+      throw new Error(`Details was not found: ${summaryText}`);
+    }
+    details.open = true;
   }, text);
 }
 
