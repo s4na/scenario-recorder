@@ -120,6 +120,30 @@ describe("createTargetSnapshot", () => {
     });
   });
 
+  it("ignores nearby controls hidden by ancestors", () => {
+    document.body.innerHTML = `
+      <section>
+        <h2>Plans</h2>
+        <div hidden>
+          <button>Archive plan</button>
+        </div>
+        <article>
+          <h3>Pro plan</h3>
+          <button id="target">Choose</button>
+        </article>
+        <button>Preview plan</button>
+      </section>
+    `;
+
+    const target = document.querySelector("#target");
+    expect(target).not.toBeNull();
+
+    const snapshot = createTargetSnapshot(target as HTMLButtonElement, { includeContext: true });
+
+    expect(snapshot.contextSummary?.nearbyControls).toEqual(["Preview plan"]);
+    expect(snapshot.contextSummary?.nearbyControls).not.toContain("Archive plan");
+  });
+
   it("redacts sensitive values from all context string fields", () => {
     document.body.innerHTML = `
       <section

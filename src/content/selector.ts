@@ -487,9 +487,9 @@ function isVisibleElement(element: HTMLElement): boolean {
       return false;
     }
     const style = window.getComputedStyle(current);
-    if (style.display === "none" || style.visibility === "hidden") {
+    if (style.display === "none") {
       return false;
     }
   }
-  return true;
+  return window.getComputedStyle(element).visibility !== "hidden";
 }
