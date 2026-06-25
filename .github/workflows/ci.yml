@@ -48,7 +48,7 @@ jobs:
       - name: Lint source
         run: npm run lint
 
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -66,6 +66,49 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+  recorder-core-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chrome for Testing
+        run: |
+          npx -y @puppeteer/browsers@3.0.4 install chrome@stable --path "${RUNNER_TEMP}/chrome"
+          CHROME_BIN="$(find "${RUNNER_TEMP}/chrome" -type f \( -name chrome -o -name 'Google Chrome for Testing' \) | head -n 1)"
+          test -x "${CHROME_BIN}"
+          echo "CHROME_BIN=${CHROME_BIN}" >> "${GITHUB_ENV}"
+
+      - name: Run recorder core browser flow
+        run: npm run test:recorder-core
+
+  extension-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build extension
         run: npm run build
 
@@ -81,6 +124,3 @@ jobs:
 
       - name: Run extension flow E2E
         run: xvfb-run -a npm run test:e2e
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev

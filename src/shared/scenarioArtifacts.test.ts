@@ -554,6 +554,32 @@ describe("scenario artifacts", () => {
     expect(code).toContain("  await page.getByLabel(\"Destination\").selectOption(\"okinawa\");");
   });
 
+  it("disambiguates repeated controls with their recorded same-label position", () => {
+    const code = scenarioToPlaywright({
+      ...scenario,
+      variables: {},
+      steps: [{
+        id: "step_repeated_button",
+        type: "click",
+        timestamp: 1,
+        url: "https://example.com/plans",
+        target: {
+          tagName: "button",
+          text: "Choose",
+          selectorCandidates: [
+            { type: "role", value: { role: "button", name: "Choose" }, confidence: 88 }
+          ],
+          contextSummary: {
+            heading: "Pro plan",
+            sameLabel: { value: "Choose", index: 2, count: 2 }
+          }
+        }
+      }]
+    });
+
+    expect(code).toContain("  await page.getByRole(\"button\", { name: \"Choose\" }).nth(1).click();");
+  });
+
   it("generates regexp URL assertions for encoded secret masks", () => {
     expect(scenarioToPlaywright({
       ...scenario,

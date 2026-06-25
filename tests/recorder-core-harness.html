@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Recorder Core Harness</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 32px; }
+      main { display: grid; gap: 20px; max-width: 720px; }
+      .plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .card { border: 1px solid #ccd5df; padding: 16px; }
+      label { display: grid; gap: 6px; margin-block: 10px; }
+      button, input, select { min-height: 34px; font: inherit; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Recorder Core Harness</h1>
+      <section class="plans" aria-label="Plans">
+        <article class="card" data-testid="basic-plan-card">
+          <h2>Basic plan</h2>
+          <p>For quick checks.</p>
+          <button type="button">Choose</button>
+        </article>
+        <article class="card" data-testid="pro-plan-card">
+          <h2>Pro plan</h2>
+          <p>For serious bookings.</p>
+          <button type="button">Choose</button>
+        </article>
+      </section>
+      <p id="selected-plan">No plan selected</p>
+      <section id="traveler-details" hidden>
+        <label>
+          Traveler name
+          <input id="traveler-name" name="travelerName" autocomplete="name">
+        </label>
+        <label>
+          Destination
+          <select id="destination" name="destination">
+            <option value="tokyo">Tokyo</option>
+            <option value="osaka">Osaka</option>
+            <option value="okinawa">Okinawa</option>
+          </select>
+        </label>
+      </section>
+    </main>
+    <script type="module">
+      import { flushPendingInputs, installRecorder } from "/src/content/recorder.ts";
+      import { scenarioToPlaywright } from "/src/shared/scenarioArtifacts.ts";
+
+      const steps = [];
+      let recording = false;
+
+      function onStep(step) {
+        steps.push(structuredClone(step));
+      }
+
+      installRecorder(onStep, {
+        initializeRecordingCache: false,
+        isRecording: () => recording,
+      });
+
+      for (const button of document.querySelectorAll(".card button")) {
+        button.addEventListener("click", () => {
+          const heading = button.closest(".card")?.querySelector("h2")?.textContent?.trim() ?? "";
+          document.querySelector("#selected-plan").textContent = heading;
+          document.querySelector("#traveler-details").hidden = heading !== "Pro plan";
+        });
+      }
+
+      window.__scenarioRecorderCoreHarness = {
+        start() {
+          steps.length = 0;
+          recording = true;
+          document.querySelector("#selected-plan").textContent = "No plan selected";
+          document.querySelector("#traveler-details").hidden = true;
+          document.querySelector("#traveler-name").value = "";
+          document.querySelector("#destination").value = "tokyo";
+        },
+        async stop() {
+          await flushPendingInputs(onStep, { throwOnError: true });
+          recording = false;
+          return structuredClone(steps);
+        },
+        toPlaywright(scenario) {
+          return scenarioToPlaywright(scenario);
+        },
+      };
+    </script>
+  </body>
+</html>

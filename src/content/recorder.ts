@@ -10,6 +10,10 @@ type StepHandler = (step: ScenarioStep) => void | Promise<void>;
 type FlushOptions = {
   throwOnError?: boolean;
 };
+type RecorderInstallOptions = {
+  initializeRecordingCache?: boolean;
+  isRecording?: () => boolean;
+};
 type StepContext = {
   url: string;
   title: string;
@@ -48,6 +52,7 @@ let selectionTimer: number | undefined;
 let lastSelectionSignature = "";
 let lastSelectionTimestamp = 0;
 const replayingSubmits = new WeakSet<HTMLFormElement>();
+let recordingStateOverride: (() => boolean) | undefined;
 
 function createStepId(): string {
   const random = crypto.getRandomValues(new Uint32Array(2));
@@ -97,7 +102,7 @@ function initializeRecordingCache(): void {
 }
 
 function isRecording(): boolean {
-  return cachedRecording;
+  return recordingStateOverride?.() ?? cachedRecording;
 }
 
 function shouldRecordTargetContext(): boolean {
@@ -559,8 +564,14 @@ function scheduleSelectionRecord(onStep: StepHandler): void {
   }, 120);
 }
 
-export function installRecorder(onStep: StepHandler): void {
-  initializeRecordingCache();
+export function installRecorder(
+  onStep: StepHandler,
+  options: RecorderInstallOptions = {},
+): void {
+  recordingStateOverride = options.isRecording;
+  if (options.initializeRecordingCache !== false) {
+    initializeRecordingCache();
+  }
   document.addEventListener(
     "pointerdown",
     (event) => {

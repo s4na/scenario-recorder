@@ -711,7 +711,7 @@ function targetToLocator(target: TargetSnapshot | undefined): string | undefined
   for (const candidate of sortLocatorCandidates(target.selectorCandidates, target.tagName)) {
     const locator = candidateToLocator(candidate);
     if (locator) {
-      return locator;
+      return disambiguateLocator(locator, candidate, target);
     }
   }
   return undefined;
@@ -775,6 +775,32 @@ function candidateToLocator(candidate: SelectorCandidate): string | undefined {
     return `page.locator(${JSON.stringify(String(candidate.value))})`;
   }
   return undefined;
+}
+
+function disambiguateLocator(
+  locator: string,
+  candidate: SelectorCandidate,
+  target: TargetSnapshot,
+): string {
+  const sameLabel = target.contextSummary?.sameLabel;
+  if (!sameLabel || sameLabel.count <= 1 || sameLabel.index <= 0) {
+    return locator;
+  }
+  if (!candidateMatchesSameLabel(candidate, sameLabel.value)) {
+    return locator;
+  }
+  return `${locator}.nth(${sameLabel.index - 1})`;
+}
+
+function candidateMatchesSameLabel(candidate: SelectorCandidate, value: string): boolean {
+  if (typeof candidate.value === "string") {
+    return candidate.value === value;
+  }
+  return (
+    candidate.type === "role" &&
+    isRoleValue(candidate.value) &&
+    candidate.value.name === value
+  );
 }
 
 function cssEscape(value: string): string {
