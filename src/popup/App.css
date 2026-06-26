@@ -144,6 +144,10 @@ details + .section {
   margin-bottom: 10px;
 }
 
+.sectionHeader > div:first-child {
+  min-width: 0;
+}
+
 .sectionHeader.compact {
   align-items: center;
   margin-bottom: 8px;
@@ -154,6 +158,9 @@ details + .section {
   color: #5c6c7f;
   font-size: 12px;
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionHeader span {
@@ -241,6 +248,7 @@ button.compactButton {
   min-height: 28px;
   padding: 5px 8px;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .primaryActions,

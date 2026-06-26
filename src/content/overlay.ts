@@ -165,7 +165,7 @@ export function renderRecordingOverlay(
       </div>
       <div class="grid">
         <div class="latest">
-          <small>${state.stepCount} steps</small>
+          <small>${state.stepCount} ステップ</small>
           <strong>${escapeHtml(lastStep ? describeStep(lastStep) : "まだ操作は記録されていません")}</strong>
           <small>${escapeHtml(lastStep ? pageLabel(lastStep.url, lastStep.title) : formatUrl(state.currentUrl))}</small>
         </div>
@@ -213,7 +213,7 @@ export function getRecordingOverlayRootForTest(): ShadowRoot | undefined {
 }
 
 function statusLabel(_status: RecordingOverlayState["status"]): string {
-  return "recording";
+  return "録画中";
 }
 
 function truncateStepText(value: string, maxLength = 34): string {

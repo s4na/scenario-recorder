@@ -41,7 +41,7 @@ function StepSummaryList({
     <section className="stepPreview" aria-label={title}>
       <div className="sectionHeader compact">
         <h3>{title}</h3>
-        <span>{steps.length} steps</span>
+        <span>{steps.length} ステップ</span>
       </div>
       <ol className="stepFlow">
         {visibleSteps.map((step, index) => (
@@ -54,7 +54,7 @@ function StepSummaryList({
           </li>
         ))}
       </ol>
-      {remainingCount > 0 ? <p className="moreSteps">ほか {remainingCount} steps</p> : null}
+      {remainingCount > 0 ? <p className="moreSteps">ほか {remainingCount} ステップ</p> : null}
     </section>
   );
 }
@@ -207,7 +207,7 @@ export default function App() {
         </div>
         <div className="counter">
           <span>{state.currentSteps.length}</span>
-          <small>steps</small>
+          <small>ステップ</small>
         </div>
       </header>
 
@@ -265,14 +265,16 @@ export default function App() {
             <p>{latestScenario ? `最新: ${latestScenario.name}` : "保存したシナリオがここに並びます。"}</p>
           </div>
           <div className="sectionTools">
-            <span>{scenarios.length}</span>
-            <button
-              className="secondary compactButton"
-              disabled={!canExportAll || isBusy}
-              onClick={() => runAction(downloadAllScenariosZip, "全シナリオをzipでダウンロードしました")}
-            >
-              全件zip
-            </button>
+            <span>{scenarios.length}件</span>
+            {canExportAll ? (
+              <button
+                className="secondary compactButton"
+                disabled={isBusy}
+                onClick={() => runAction(downloadAllScenariosZip, "全シナリオをエクスポートしました")}
+              >
+                全件エクスポート
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -284,19 +286,21 @@ export default function App() {
               <li key={scenario.id} className="scenarioItem">
                 <div className="scenarioMeta">
                   <strong>{scenario.name}</strong>
-                  <span>{scenario.steps.length} steps</span>
+                  <span>{scenario.steps.length} ステップ</span>
                   <small>{new Date(scenario.createdAt).toLocaleString()}</small>
                   <ScenarioLatestStep scenario={scenario} />
                 </div>
                 <div className="scenarioActions">
                   <button
                     className="primary"
-                    onClick={() => runAction(() => downloadScenarioZip(scenario), "シナリオzipをダウンロードしました")}
+                    disabled={isBusy}
+                    onClick={() => runAction(() => downloadScenarioZip(scenario), "シナリオをエクスポートしました")}
                   >
                     エクスポート
                   </button>
                   <button
                     className="danger"
+                    disabled={isBusy}
                     onClick={() => {
                       if (!window.confirm("このシナリオを削除しますか？")) {
                         return;

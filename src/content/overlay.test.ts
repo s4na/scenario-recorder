@@ -41,7 +41,7 @@ describe("recording overlay", () => {
     const text = root?.textContent ?? "";
     const markup = root?.innerHTML ?? "";
     expect(text).toContain("録画中");
-    expect(text).toContain("recording");
+    expect(text).not.toContain("recording");
     expect(text).toContain("3");
     expect(text).toContain("「Name」に入力");
     expect(text).toContain("Customersページ");
@@ -81,7 +81,7 @@ describe("recording overlay", () => {
     expect(host?.shadowRoot).toBeNull();
     const text = getRecordingOverlayRootForTest()?.textContent ?? "";
     expect(text).toContain("録画中");
-    expect(text).toContain("recording");
+    expect(text).not.toContain("recording");
     expect(text).not.toContain("一時停止");
     expect(text).not.toContain("paused");
   });

@@ -73,7 +73,7 @@ try {
   assert(popupText.includes("シナリオ一覧"), "Popup does not expose the scenario list.");
   assert(popupText.includes("最新"), "Popup does not show the latest saved scenario step.");
   assert(popupText.includes("エクスポート"), "Popup does not expose one-scenario export.");
-  assert(popupText.includes("全件zip"), "Popup does not expose all-scenario ZIP export.");
+  assert(popupText.includes("全件エクスポート"), "Popup does not expose all-scenario ZIP export.");
   assert(!popupText.includes("記録名"), "Popup still asks users to name scenarios before saving.");
   assert(!popupText.includes("対象と管理"), "Popup still exposes secondary management UI.");
   assert(!popupText.includes("一時停止"), "Popup still exposes pause as a primary workflow.");
@@ -107,7 +107,7 @@ try {
     "Downloaded Playwright file does not include generated test code.",
   );
   const existingZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
-  await clickPopupButtonWithText(controlPage, "全件zip");
+  await clickPopupButtonWithText(controlPage, "全件エクスポート");
   const allRecordsZip = await waitForDownloadedFile(".zip", existingZipFiles);
   const zipEntries = readZipEntries(readFileSync(allRecordsZip));
   const zipEntryNames = Object.keys(zipEntries);
