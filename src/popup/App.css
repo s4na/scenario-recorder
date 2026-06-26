@@ -167,6 +167,13 @@ details + .section {
   font-weight: 800;
 }
 
+.sectionTools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
 button {
   min-height: 36px;
   padding: 8px 10px;
@@ -222,6 +229,22 @@ button.secondary:hover:not(:disabled) {
 
 button.danger {
   color: #9f1239;
+}
+
+button.subtleDanger {
+  border-color: #e8c7d1;
+  background: #fff8fa;
+}
+
+button.subtleDanger:hover:not(:disabled) {
+  border-color: #d78ba1;
+  background: #fff1f5;
+}
+
+button.compactButton {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 11px;
 }
 
 .primaryActions,
@@ -332,11 +355,6 @@ button.danger {
   overflow-y: auto;
   list-style: none;
   scrollbar-gutter: stable;
-}
-
-.allZipButton {
-  width: 100%;
-  margin-bottom: 10px;
 }
 
 .scenarioItem {

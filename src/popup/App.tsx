@@ -228,7 +228,7 @@ export default function App() {
           ) : null}
           {canDiscard ? (
             <button
-              className="danger discardButton"
+              className="danger subtleDanger discardButton"
               disabled={isBusy}
               onClick={() => {
                 if (window.confirm("作業中の録画を破棄しますか？")) {
@@ -249,18 +249,20 @@ export default function App() {
             <h2>シナリオ一覧</h2>
             <p>{latestScenario ? `最新: ${latestScenario.name}` : "保存したシナリオがここに並びます。"}</p>
           </div>
-          <span>{scenarios.length}</span>
+          <div className="sectionTools">
+            <span>{scenarios.length}</span>
+            <button
+              className="secondary compactButton"
+              disabled={!canExportAll || isBusy}
+              onClick={() => runAction(downloadAllScenariosZip, "全シナリオをzipでダウンロードしました")}
+            >
+              全件zip
+            </button>
+          </div>
         </div>
-        <button
-          className="secondary allZipButton"
-          disabled={!canExportAll || isBusy}
-          onClick={() => runAction(downloadAllScenariosZip, "全シナリオをzipでダウンロードしました")}
-        >
-          全シナリオをzipで取得
-        </button>
 
         {scenarios.length === 0 ? (
-          <p className="empty">保存済みのシナリオはありません。</p>
+          <p className="empty">上の「録画開始」から最初のシナリオを作れます。</p>
         ) : (
           <ul>
             {scenarios.map((scenario) => (

@@ -17,7 +17,7 @@ export function renderRecordingOverlay(
     host.dataset.status = state.status;
   }
   const statusClass = state.status === "recording" ? "recording" : "paused";
-  const title = state.status === "recording" ? "記録中" : "記録を一時停止中";
+  const title = state.status === "recording" ? "録画中" : "録画を一時停止中";
   const recentSteps = state.recentSteps.slice().reverse();
   const lastStep = recentSteps[0];
   root.innerHTML = `
@@ -110,7 +110,8 @@ export function renderRecordingOverlay(
         max-height: 190px;
         margin: 0;
         padding: 0;
-        overflow: hidden;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
         list-style: none;
       }
       .flow li {
