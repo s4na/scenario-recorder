@@ -158,9 +158,8 @@ export function renderRecordingOverlay(
     <div class="panel" role="status" aria-live="polite">
       <div class="header">
         <div class="title">${title}</div>
-        <div class="status ${statusClass}">
+        <div class="status ${statusClass}" aria-hidden="true">
           <span class="dot"></span>
-          <span>${escapeHtml(statusLabel(state.status))}</span>
         </div>
       </div>
       <div class="grid">
@@ -210,10 +209,6 @@ function ensureOverlayRoot(): ShadowRoot {
 
 export function getRecordingOverlayRootForTest(): ShadowRoot | undefined {
   return shadowRoot;
-}
-
-function statusLabel(_status: RecordingOverlayState["status"]): string {
-  return "録画中";
 }
 
 function truncateStepText(value: string, maxLength = 34): string {

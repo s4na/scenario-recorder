@@ -38,7 +38,7 @@ describe("recording overlay", () => {
     expect(host?.dataset.status).toBe("recording");
     expect(host?.shadowRoot).toBeNull();
     const root = getRecordingOverlayRootForTest();
-    const text = root?.textContent ?? "";
+    const text = root?.querySelector(".panel")?.textContent ?? "";
     const markup = root?.innerHTML ?? "";
     expect(text).toContain("録画中");
     expect(text).not.toContain("recording");
@@ -79,7 +79,7 @@ describe("recording overlay", () => {
     const host = document.getElementById("scenario-recorder-status-overlay");
     expect(host?.dataset.status).toBe("paused");
     expect(host?.shadowRoot).toBeNull();
-    const text = getRecordingOverlayRootForTest()?.textContent ?? "";
+    const text = getRecordingOverlayRootForTest()?.querySelector(".panel")?.textContent ?? "";
     expect(text).toContain("録画中");
     expect(text).not.toContain("recording");
     expect(text).not.toContain("一時停止");
