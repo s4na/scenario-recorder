@@ -244,7 +244,7 @@ function describeStep(step: RecordingOverlayState["recentSteps"][number]): strin
     case "select":
       return target ? `${target}を選択` : "選択";
     case "selection":
-      return typeof step.value === "string" ? `「${truncateStepText(step.value)}」を文字選択` : "文字選択";
+      return typeof step.value === "string" ? `「${truncateStepText(step.value)}」を確認` : "選択文字を確認";
     case "submit":
       return target ? `${target}を送信` : "送信";
     case "navigation":
