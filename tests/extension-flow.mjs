@@ -66,13 +66,13 @@ try {
   await controlPage.reload({ waitUntil: "domcontentloaded" });
   await controlPage.waitForFunction(() => {
     const buttons = Array.from(document.querySelectorAll("button"));
-    return buttons.some((button) => button.textContent?.trim() === "zip取得" && !button.disabled);
+    return buttons.some((button) => button.textContent?.trim() === "エクスポート" && !button.disabled);
   }, { timeout: 12_000 });
   const popupText = await controlPage.evaluate(() => document.body.innerText);
   assert(popupText.includes("録画"), "Popup does not expose the recording workflow.");
   assert(popupText.includes("シナリオ一覧"), "Popup does not expose the scenario list.");
-  assert(popupText.includes("ステップ"), "Popup does not show saved scenario step summaries.");
-  assert(popupText.includes("zip取得"), "Popup does not expose one-scenario ZIP export.");
+  assert(popupText.includes("最新"), "Popup does not show the latest saved scenario step.");
+  assert(popupText.includes("エクスポート"), "Popup does not expose one-scenario export.");
   assert(popupText.includes("全件zip"), "Popup does not expose all-scenario ZIP export.");
   assert(!popupText.includes("記録名"), "Popup still asks users to name scenarios before saving.");
   assert(!popupText.includes("対象と管理"), "Popup still exposes secondary management UI.");
@@ -82,7 +82,7 @@ try {
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
   const existingLatestZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
-  await clickPopupButtonWithText(controlPage, "zip取得");
+  await clickPopupButtonWithText(controlPage, "エクスポート");
   const latestScenarioZip = await waitForDownloadedFile(".zip", existingLatestZipFiles);
   const latestEntries = readZipEntries(readFileSync(latestScenarioZip));
   const latestEntryNames = Object.keys(latestEntries).sort();
@@ -157,7 +157,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await waitForScenarioCount(controlPage, 1);
 
   const [scenario] = await getScenarios(controlPage);
-  await clickPopupButtonWithText(controlPage, "zip取得");
+  await clickPopupButtonWithText(controlPage, "エクスポート");
   const downloadedScenarioZip = await waitForDownloadedFile(".zip", existingSaveZipFiles);
   const savedEntries = readZipEntries(readFileSync(downloadedScenarioZip));
   const savedJsonlName = Object.keys(savedEntries).find((entry) => entry.endsWith(".jsonl"));

@@ -16,8 +16,8 @@ export function renderRecordingOverlay(
   if (host) {
     host.dataset.status = state.status;
   }
-  const statusClass = state.status === "recording" ? "recording" : "paused";
-  const title = state.status === "recording" ? "録画中" : "録画を一時停止中";
+  const statusClass = "recording";
+  const title = "録画中";
   const recentSteps = state.recentSteps.slice().reverse();
   const lastStep = recentSteps[0];
   root.innerHTML = `
@@ -212,8 +212,8 @@ export function getRecordingOverlayRootForTest(): ShadowRoot | undefined {
   return shadowRoot;
 }
 
-function statusLabel(status: RecordingOverlayState["status"]): string {
-  return status === "recording" ? "recording" : "paused";
+function statusLabel(_status: RecordingOverlayState["status"]): string {
+  return "recording";
 }
 
 function truncateStepText(value: string, maxLength = 34): string {

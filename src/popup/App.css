@@ -78,10 +78,6 @@ h3 {
   background: #b42318;
 }
 
-.status-paused {
-  background: #8a5a10;
-}
-
 .counter {
   min-width: 74px;
   padding: 8px 10px;
@@ -257,6 +253,10 @@ button.compactButton {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.primaryActions button:first-child:last-child {
+  grid-column: 1 / -1;
+}
+
 .stepPreview {
   margin-top: 12px;
   padding: 10px;
@@ -332,11 +332,8 @@ button.compactButton {
   font-size: 11px;
 }
 
-.savePanel {
-  margin-top: 10px;
-}
-
 .recordButton:last-child,
+.saveButton,
 .discardButton {
   grid-column: 1 / -1;
 }
@@ -383,6 +380,36 @@ button.compactButton {
 .scenarioMeta small {
   color: #5c6c7f;
   font-size: 11px;
+}
+
+.scenarioLatestStep {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  align-items: center;
+  margin-top: 3px;
+  color: #526478;
+  font-size: 11px;
+}
+
+.scenarioLatestStep span {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #755600;
+  background: #fef3c7;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.scenarioLatestStep strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #263241;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .scenarioActions {

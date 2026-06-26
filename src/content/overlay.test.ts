@@ -66,7 +66,7 @@ describe("recording overlay", () => {
     expect(document.getElementById("scenario-recorder-status-overlay")).toBeNull();
   });
 
-  it("shows a paused heading while the recording is paused", () => {
+  it("keeps the recording language while the internal state is paused", () => {
     renderRecordingOverlay({
       visible: true,
       status: "paused",
@@ -80,7 +80,9 @@ describe("recording overlay", () => {
     expect(host?.dataset.status).toBe("paused");
     expect(host?.shadowRoot).toBeNull();
     const text = getRecordingOverlayRootForTest()?.textContent ?? "";
-    expect(text).toContain("録画を一時停止中");
-    expect(text).toContain("paused");
+    expect(text).toContain("録画中");
+    expect(text).toContain("recording");
+    expect(text).not.toContain("一時停止");
+    expect(text).not.toContain("paused");
   });
 });

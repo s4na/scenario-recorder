@@ -59,6 +59,19 @@ function StepSummaryList({
   );
 }
 
+function ScenarioLatestStep({ scenario }: { scenario: Scenario }) {
+  const lastStep = scenario.steps.at(-1);
+  if (!lastStep) {
+    return null;
+  }
+  return (
+    <p className="scenarioLatestStep">
+      <span>最新</span>
+      <strong>{describeStep(lastStep)}</strong>
+    </p>
+  );
+}
+
 function isContentScriptUnavailableError(message: string): boolean {
   return (
     message.includes("Could not establish connection") ||
@@ -80,9 +93,9 @@ export default function App() {
   const canSave = state.currentSteps.length > 0;
   const canExportAll = scenarios.length > 0;
   const latestScenario = useMemo(() => scenarios[0], [scenarios]);
+  const statusTone = state.status === "paused" ? "recording" : state.status;
   const statusLabel = useMemo(() => {
-    if (state.status === "recording") return "録画中";
-    if (state.status === "paused") return "一時停止";
+    if (state.status === "recording" || state.status === "paused") return "録画中";
     return state.currentSteps.length > 0 ? "保存待ち" : "待機中";
   }, [state.currentSteps.length, state.status]);
 
@@ -190,7 +203,7 @@ export default function App() {
       <header className="header">
         <div>
           <h1>シナリオレコーダー</h1>
-          <p className={`status status-${state.status}`}>{statusLabel}</p>
+          <p className={`status status-${statusTone}`}>{statusLabel}</p>
         </div>
         <div className="counter">
           <span>{state.currentSteps.length}</span>
@@ -208,14 +221,16 @@ export default function App() {
           </div>
         </div>
         <div className="primaryActions">
-          <button
-            data-testid="start-recording"
-            className="primary recordButton"
-            disabled={!canStart || isBusy}
-            onClick={() => runAction(() => sendRuntimeMessage<"START_RECORDING">({ type: "START_RECORDING" }).then(setState), "録画を開始しました")}
-          >
-            録画開始
-          </button>
+          {canStart ? (
+            <button
+              data-testid="start-recording"
+              className="primary recordButton"
+              disabled={isBusy}
+              onClick={() => runAction(() => sendRuntimeMessage<"START_RECORDING">({ type: "START_RECORDING" }).then(setState), "録画を開始しました")}
+            >
+              録画開始
+            </button>
+          ) : null}
           {canSave ? (
             <button
               data-testid="save-scenario"
@@ -271,14 +286,14 @@ export default function App() {
                   <strong>{scenario.name}</strong>
                   <span>{scenario.steps.length} steps</span>
                   <small>{new Date(scenario.createdAt).toLocaleString()}</small>
-                  <StepSummaryList title="ステップ" steps={scenario.steps} limit={4} />
+                  <ScenarioLatestStep scenario={scenario} />
                 </div>
                 <div className="scenarioActions">
                   <button
                     className="primary"
                     onClick={() => runAction(() => downloadScenarioZip(scenario), "シナリオzipをダウンロードしました")}
                   >
-                    zip取得
+                    エクスポート
                   </button>
                   <button
                     className="danger"
