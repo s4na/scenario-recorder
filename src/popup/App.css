@@ -1,6 +1,6 @@
 :root {
-  color: #18212f;
-  background: #eef3f8;
+  color: #17202a;
+  background: #eef2f5;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
@@ -13,7 +13,7 @@
 
 body {
   margin: 0;
-  min-width: 390px;
+  min-width: 380px;
 }
 
 button,
@@ -24,13 +24,11 @@ textarea {
 }
 
 .app {
-  width: 390px;
+  width: 380px;
   max-height: 620px;
   padding: 14px;
   overflow-y: auto;
-  background:
-    linear-gradient(180deg, #f8fbff 0, #eef3f8 220px),
-    #eef3f8;
+  background: #eef2f5;
 }
 
 .header {
@@ -73,15 +71,11 @@ h3 {
 }
 
 .status-idle {
-  background: #64748b;
+  background: #667085;
 }
 
 .status-recording {
-  background: #bd3a2b;
-}
-
-.status-paused {
-  background: #2f6aa3;
+  background: #b42318;
 }
 
 .counter {
@@ -115,8 +109,8 @@ h3 {
 }
 
 .notice.success {
-  color: #17542c;
-  background: #def5e8;
+  color: #14532d;
+  background: #dcfce7;
 }
 
 .notice.error {
@@ -126,7 +120,7 @@ h3 {
 
 .section {
   padding: 12px;
-  border: 1px solid #d2dce8;
+  border: 1px solid #d6dee8;
   border-radius: 8px;
   background: #ffffff;
 }
@@ -137,9 +131,9 @@ details + .section {
   margin-top: 10px;
 }
 
-.focusPanel {
-  border-color: #b9cde3;
-  box-shadow: 0 8px 26px rgb(38 58 82 / 10%);
+.recorderPanel {
+  border-color: #8fb7b2;
+  box-shadow: 0 8px 22px rgb(31 70 73 / 10%);
 }
 
 .sectionHeader {
@@ -169,36 +163,11 @@ details + .section {
   font-weight: 800;
 }
 
-.field {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 10px;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.field input,
-.field select,
-.field textarea {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #c4cfdb;
-  border-radius: 7px;
-  color: #18212f;
-  background: #ffffff;
-}
-
-.field textarea {
-  min-height: 74px;
-  resize: vertical;
-}
-
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
-  outline: 2px solid #76a8d8;
-  outline-offset: 1px;
+.sectionTools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
 }
 
 button {
@@ -231,41 +200,61 @@ button:disabled {
 }
 
 button.primary {
-  border-color: #1f6f7a;
+  border-color: #17666d;
   color: #ffffff;
-  background: #1f6f7a;
+  background: #17666d;
   font-weight: 850;
 }
 
 button.primary:hover:not(:disabled) {
-  border-color: #185d66;
-  background: #185d66;
+  border-color: #104f55;
+  background: #104f55;
+}
+
+button.secondary {
+  border-color: #b58b13;
+  color: #3f2f02;
+  background: #fff7d6;
+  font-weight: 800;
+}
+
+button.secondary:hover:not(:disabled) {
+  border-color: #8a680c;
+  background: #ffefad;
 }
 
 button.danger {
   color: #9f1239;
 }
 
+button.subtleDanger {
+  border-color: #e8c7d1;
+  background: #fff8fa;
+}
+
+button.subtleDanger:hover:not(:disabled) {
+  border-color: #d78ba1;
+  background: #fff1f5;
+}
+
+button.compactButton {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
 .primaryActions,
-.supportActions,
-.managementActions,
 .scenarioActions {
   display: grid;
   gap: 8px;
 }
 
 .primaryActions {
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.supportActions,
-.managementActions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 8px;
-}
-
-.handoffPanel .supportActions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.primaryActions button:first-child:last-child {
+  grid-column: 1 / -1;
 }
 
 .stepPreview {
@@ -343,26 +332,10 @@ button.danger {
   font-size: 11px;
 }
 
-.savePanel {
-  margin-top: 10px;
-}
-
-.handoffPanel {
-  border-color: #b8d8c8;
-}
-
-.settingsPanel summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 850;
-}
-
-.detailsBody {
-  margin-top: 12px;
-}
-
-.hiddenInput {
-  display: none;
+.recordButton:last-child,
+.saveButton,
+.discardButton {
+  grid-column: 1 / -1;
 }
 
 .empty {
@@ -373,7 +346,7 @@ button.danger {
 .scenarioList ul {
   display: grid;
   gap: 8px;
-  max-height: 260px;
+  max-height: 330px;
   margin: 0;
   padding: 0;
   overflow-y: auto;
@@ -407,6 +380,36 @@ button.danger {
 .scenarioMeta small {
   color: #5c6c7f;
   font-size: 11px;
+}
+
+.scenarioLatestStep {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  align-items: center;
+  margin-top: 3px;
+  color: #526478;
+  font-size: 11px;
+}
+
+.scenarioLatestStep span {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #755600;
+  background: #fef3c7;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.scenarioLatestStep strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #263241;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .scenarioActions {

@@ -842,6 +842,7 @@ async function getRecordingOverlayState(
     stepCount: state.currentSteps.length,
     lastStepType: lastStep?.type,
     currentUrl: sanitizeOptionalUrl(url),
+    recentSteps: state.currentSteps.slice(-6),
   };
 }
 

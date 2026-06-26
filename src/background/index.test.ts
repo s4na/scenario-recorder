@@ -383,7 +383,8 @@ describe("background", () => {
       status: "recording",
       stepCount: 2,
       lastStepType: "fill",
-      currentUrl: "https://app.example/start?token=%7B%7BSECRET%7D%7D"
+      currentUrl: "https://app.example/start?token=%7B%7BSECRET%7D%7D",
+      recentSteps: state.currentSteps
     });
   });
 
@@ -420,7 +421,8 @@ describe("background", () => {
       status: "paused",
       stepCount: 0,
       lastStepType: undefined,
-      currentUrl: "https://app.example/start"
+      currentUrl: "https://app.example/start",
+      recentSteps: []
     });
   });
 

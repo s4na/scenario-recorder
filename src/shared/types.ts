@@ -189,4 +189,5 @@ export type RecordingOverlayState = {
   stepCount: number;
   lastStepType?: ScenarioStepType;
   currentUrl?: string;
+  recentSteps: ScenarioStep[];
 };

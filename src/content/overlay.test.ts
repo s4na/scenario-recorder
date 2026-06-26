@@ -18,6 +18,19 @@ describe("recording overlay", () => {
       stepCount: 3,
       lastStepType: "fill",
       currentUrl: "https://app.example/customers?token={{SECRET}}",
+      recentSteps: [{
+        id: "step_fill",
+        type: "fill",
+        timestamp: 100,
+        url: "https://app.example/customers?token={{SECRET}}",
+        title: "Customers",
+        value: "Sana",
+        target: {
+          tagName: "input",
+          label: "Name",
+          selectorCandidates: [{ type: "label", value: "Name", confidence: 90 }]
+        }
+      }],
     });
 
     const host = document.getElementById("scenario-recorder-status-overlay");
@@ -27,11 +40,11 @@ describe("recording overlay", () => {
     const root = getRecordingOverlayRootForTest();
     const text = root?.textContent ?? "";
     const markup = root?.innerHTML ?? "";
-    expect(text).toContain("記録中");
+    expect(text).toContain("録画中");
     expect(text).toContain("recording");
     expect(text).toContain("3");
-    expect(text).toContain("fill");
-    expect(text).toContain("https://app.example/customers");
+    expect(text).toContain("「Name」に入力");
+    expect(text).toContain("Customersページ");
     expect(text).not.toContain("token");
     expect(text).not.toContain("{{SECRET}}");
     expect(markup).toContain("position: fixed");
@@ -45,6 +58,7 @@ describe("recording overlay", () => {
       status: "paused",
       stepCount: 1,
       currentUrl: "https://app.example",
+      recentSteps: [],
     });
 
     renderRecordingOverlay({ visible: false });
@@ -52,20 +66,23 @@ describe("recording overlay", () => {
     expect(document.getElementById("scenario-recorder-status-overlay")).toBeNull();
   });
 
-  it("shows a paused heading while the recording is paused", () => {
+  it("keeps the recording language while the internal state is paused", () => {
     renderRecordingOverlay({
       visible: true,
       status: "paused",
       stepCount: 4,
       lastStepType: "click",
       currentUrl: "https://app.example",
+      recentSteps: [],
     });
 
     const host = document.getElementById("scenario-recorder-status-overlay");
     expect(host?.dataset.status).toBe("paused");
     expect(host?.shadowRoot).toBeNull();
     const text = getRecordingOverlayRootForTest()?.textContent ?? "";
-    expect(text).toContain("記録を一時停止中");
-    expect(text).toContain("paused");
+    expect(text).toContain("録画中");
+    expect(text).toContain("recording");
+    expect(text).not.toContain("一時停止");
+    expect(text).not.toContain("paused");
   });
 });
