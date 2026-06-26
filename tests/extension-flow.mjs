@@ -138,7 +138,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await waitForOverlay(fixturePage, "recording");
   await controlPage.reload({ waitUntil: "domcontentloaded" });
   await fixturePage.click("#choose-package");
-  await selectFixtureText(fixturePage, "#selection-source");
+  await assertFixtureText(fixturePage, "#selection-source");
   await fixturePage.type("#traveler-name", "Sana Tester");
   await fixturePage.click("#destination");
   await fixturePage.keyboard.press("ArrowDown");
@@ -163,6 +163,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   const savedJsonlName = Object.keys(savedEntries).find((entry) => entry.endsWith(".jsonl"));
   const savedSpecName = Object.keys(savedEntries).find((entry) => entry.endsWith(".spec.ts"));
   assert(savedJsonlName !== undefined && savedSpecName !== undefined, "Saved scenario ZIP is missing JSONL or Playwright files.");
+  const savedSpecText = savedEntries[savedSpecName];
   const savedJsonlLines = parseJsonl(savedEntries[savedJsonlName]);
   assert(
     savedJsonlLines[0]?.kind === "meta" && savedJsonlLines[0]?.name === scenario.name,
@@ -190,20 +191,30 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
     "Saved scenario ZIP JSONL does not include the recorded submit step.",
   );
   assert(
-    savedEntries[savedSpecName].includes("import { test, expect } from '@playwright/test';"),
+    savedSpecText.includes("import { test, expect } from '@playwright/test';"),
     "Saved scenario ZIP Playwright spec does not include the Playwright import.",
   );
   assert(
-    savedEntries[savedSpecName].includes("page.getByLabel(\"Traveler name\").fill(\"Sana Tester\");"),
+    savedSpecText.includes("page.getByLabel(\"Traveler name\").fill(\"Sana Tester\");"),
     "Saved scenario ZIP Playwright spec does not include the traveler fill action.",
   );
   assert(
-    savedEntries[savedSpecName].includes("selectOption(\"okinawa\");"),
+    savedSpecText.includes("selectOption(\"okinawa\");"),
     "Saved scenario ZIP Playwright spec does not include the destination select action.",
   );
   assert(
-    savedEntries[savedSpecName].includes("page.getByRole(\"button\", { name: \"Submit booking\" }).click();"),
+    savedSpecText.includes("page.getByRole(\"button\", { name: \"Submit booking\" }).click();"),
     "Saved scenario ZIP Playwright spec does not include the submit click action.",
+  );
+  assert(
+    savedJsonlSteps.some((line) => line.type === "selection" && line.value.includes("Cancellation policy")),
+    "Saved scenario ZIP JSONL does not include the confirmed selected text assertion step.",
+  );
+  assert(
+    savedSpecText.includes("await expect(page.getByText(new RegExp(") &&
+      savedSpecText.includes("Cancellation") &&
+      savedSpecText.includes(".toBeVisible();"),
+    "Saved scenario ZIP Playwright spec does not assert the confirmed selected text.",
   );
   assert(isDefaultScenarioName(scenario.name), "Unnamed context scenario did not use the timestamp default name.");
   assert(
@@ -247,7 +258,7 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   );
 }
 
-async function selectFixtureText(page, selector) {
+async function assertFixtureText(page, selector) {
   const rect = await page.$eval(selector, (element) => {
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -264,6 +275,21 @@ async function selectFixtureText(page, selector) {
   await page.mouse.down();
   await page.mouse.move(rect.x + Math.min(rect.width - 2, 150), y, { steps: 8 });
   await page.mouse.up();
+  await page.mouse.click(rect.x + 20, y, { button: "right" });
+  await page.waitForFunction(() =>
+    Boolean(document.getElementById("scenario-recorder-selection-assert-menu")?.shadowRoot?.querySelector("[data-action='assert']")),
+    { timeout: 8_000 },
+  );
+  await page.evaluate(() => {
+    const button = document
+      .getElementById("scenario-recorder-selection-assert-menu")
+      ?.shadowRoot
+      ?.querySelector("[data-action='assert']");
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error("Selection assertion action was not found.");
+    }
+    button.click();
+  });
   await delay(220);
 }
 

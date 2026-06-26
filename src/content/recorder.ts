@@ -33,6 +33,7 @@ type PendingFillSend = {
 const RETRY_DELAY_MS = 300;
 const OVERLAY_HOST_ID = "scenario-recorder-status-overlay";
 const FEEDBACK_HOST_ID = "scenario-recorder-feedback-layer";
+const SELECTION_ASSERT_MENU_HOST_ID = "scenario-recorder-selection-assert-menu";
 const pendingInputs = new Map<
   HTMLInputElement | HTMLTextAreaElement,
   PendingInput
@@ -48,7 +49,6 @@ let cachedRecording = false;
 let pendingInputSequence = 0;
 let activeFlush: Promise<void> | undefined;
 let recordingTargetRefreshSequence = 0;
-let selectionTimer: number | undefined;
 let lastSelectionSignature = "";
 let lastSelectionTimestamp = 0;
 const replayingSubmits = new WeakSet<HTMLFormElement>();
@@ -201,7 +201,8 @@ function isRecorderUiElement(element: HTMLElement): boolean {
   return (
     element.id === OVERLAY_HOST_ID ||
     element.id === FEEDBACK_HOST_ID ||
-    Boolean(element.closest(`#${OVERLAY_HOST_ID}, #${FEEDBACK_HOST_ID}`))
+    element.id === SELECTION_ASSERT_MENU_HOST_ID ||
+    Boolean(element.closest(`#${OVERLAY_HOST_ID}, #${FEEDBACK_HOST_ID}, #${SELECTION_ASSERT_MENU_HOST_ID}`))
   );
 }
 
@@ -524,12 +525,8 @@ function currentSelection(): { text: string; target: HTMLElement; rects: DOMRect
   return { text, target, rects: Array.from(range.getClientRects()) };
 }
 
-function recordSelection(onStep: StepHandler): void {
+function recordSelection(selected: { text: string; target: HTMLElement; rects: DOMRect[] }, onStep: StepHandler): void {
   if (!isRecording()) {
-    return;
-  }
-  const selected = currentSelection();
-  if (!selected) {
     return;
   }
   const signature = `${location.href}:${selected.target.tagName}:${selected.target.id}:${selected.text}`;
@@ -553,17 +550,117 @@ function recordSelection(onStep: StepHandler): void {
   });
 }
 
-function scheduleSelectionRecord(onStep: StepHandler): void {
-  if (!isRecording()) {
+function hideSelectionAssertMenu(): void {
+  document.getElementById(SELECTION_ASSERT_MENU_HOST_ID)?.remove();
+}
+
+function showSelectionAssertMenu(
+  selected: { text: string; target: HTMLElement; rects: DOMRect[] },
+  event: MouseEvent,
+  onStep: StepHandler,
+): void {
+  hideSelectionAssertMenu();
+  const host = document.createElement("div");
+  host.id = SELECTION_ASSERT_MENU_HOST_ID;
+  const root = host.attachShadow({ mode: "open" });
+  const maxX = Math.max(8, window.innerWidth - 220);
+  const maxY = Math.max(8, window.innerHeight - 96);
+  const x = Math.min(Math.max(8, event.clientX), maxX);
+  const y = Math.min(Math.max(8, event.clientY), maxY);
+  root.innerHTML = `
+    <style>
+      :host {
+        all: initial;
+        color-scheme: light dark;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .menu {
+        position: fixed;
+        left: ${x}px;
+        top: ${y}px;
+        z-index: 2147483647;
+        display: grid;
+        gap: 4px;
+        min-width: 190px;
+        max-width: min(300px, calc(100vw - 16px));
+        padding: 6px;
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.24);
+        color: #17202a;
+        font-size: 12px;
+      }
+      .preview {
+        overflow: hidden;
+        padding: 5px 7px 6px;
+        color: #5c6c7f;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      button {
+        min-height: 30px;
+        padding: 6px 8px;
+        border: 0;
+        border-radius: 6px;
+        color: #17202a;
+        background: transparent;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      button:hover,
+      button:focus-visible {
+        background: #eef3f8;
+        outline: none;
+      }
+      button.primary {
+        color: #0f4f55;
+        font-weight: 800;
+      }
+    </style>
+    <div class="menu" role="group" aria-label="選択文字の記録">
+      <div class="preview">${escapeHtml(selected.text)}</div>
+      <button class="primary" type="button" data-action="assert">この文字を確認する</button>
+      <button type="button" data-action="ignore">記録しない</button>
+    </div>
+  `;
+  root.addEventListener("click", (clickEvent) => {
+    const button = clickEvent.target instanceof HTMLButtonElement ? clickEvent.target : undefined;
+    if (!button) {
+      return;
+    }
+    clickEvent.preventDefault();
+    clickEvent.stopPropagation();
+    if (button.dataset.action === "assert") {
+      recordSelection(selected, onStep);
+    }
+    hideSelectionAssertMenu();
+  });
+  document.documentElement.append(host);
+}
+
+function handleSelectionContextMenu(event: MouseEvent, onStep: StepHandler): void {
+  if (!event.isTrusted || !isRecording() || isRecorderUiEvent(event)) {
     return;
   }
-  if (selectionTimer !== undefined) {
-    window.clearTimeout(selectionTimer);
+  const selected = currentSelection();
+  if (!selected) {
+    hideSelectionAssertMenu();
+    return;
   }
-  selectionTimer = window.setTimeout(() => {
-    selectionTimer = undefined;
-    recordSelection(onStep);
-  }, 120);
+  event.preventDefault();
+  event.stopPropagation();
+  showSelectionAssertMenu(selected, event, onStep);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 export function installRecorder(
@@ -576,10 +673,16 @@ export function installRecorder(
   }
 
   function handleRecorderPointerDown(event: PointerEvent): void {
+    if (event.isTrusted && !isRecorderUiEvent(event)) {
+      hideSelectionAssertMenu();
+    }
     flushBeforeActivation(event, onStep);
   }
 
   function handleRecorderKeyDown(event: KeyboardEvent): void {
+    if (event.isTrusted && event.key === "Escape") {
+      hideSelectionAssertMenu();
+    }
     if (event.key === "Enter" || event.key === " ") {
       flushBeforeActivation(event, onStep);
     }
@@ -643,10 +746,13 @@ export function installRecorder(
   }
 
   function handleRecorderSelectionChange(event: Event): void {
-    if (!event.isTrusted) {
-      return;
+    if (event.isTrusted && !currentSelection()) {
+      hideSelectionAssertMenu();
     }
-    scheduleSelectionRecord(onStep);
+  }
+
+  function handleRecorderContextMenu(event: MouseEvent): void {
+    handleSelectionContextMenu(event, onStep);
   }
 
   function handleRecorderPageHide(): void {
@@ -660,6 +766,7 @@ export function installRecorder(
   document.addEventListener("change", handleRecorderChange, true);
   document.addEventListener("submit", handleRecorderSubmit, true);
   document.addEventListener("selectionchange", handleRecorderSelectionChange, true);
+  document.addEventListener("contextmenu", handleRecorderContextMenu, true);
   window.addEventListener("pagehide", handleRecorderPageHide);
 }
 

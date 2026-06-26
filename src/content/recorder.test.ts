@@ -114,8 +114,7 @@ describe("installRecorder", () => {
     );
   });
 
-  it("records text selection steps", async () => {
-    vi.useFakeTimers();
+  it("records selected text only after the context menu action confirms it", async () => {
     const { listeners, steps } = await installRecorderForContextTest("context");
     document.body.innerHTML = "<p id=\"terms\">Please review the cancellation policy before booking.</p>";
     const paragraph = document.querySelector("p");
@@ -131,7 +130,19 @@ describe("installRecorder", () => {
     } as unknown as Selection);
 
     dispatchTrustedListener(listeners, "selectionchange", document.body);
-    await vi.advanceTimersByTimeAsync(130);
+    await Promise.resolve();
+    expect(steps).toHaveLength(0);
+
+    dispatchTrustedListener(listeners, "contextmenu", paragraph, {
+      clientX: 24,
+      clientY: 32,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as Partial<MouseEvent>);
+    const menuHost = document.getElementById("scenario-recorder-selection-assert-menu");
+    const confirmButton = menuHost?.shadowRoot?.querySelector<HTMLButtonElement>("[data-action=\"assert\"]");
+    confirmButton?.click();
+    await Promise.resolve();
 
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({
@@ -139,7 +150,7 @@ describe("installRecorder", () => {
       value: "cancellation policy",
       target: expect.objectContaining({ tagName: "p", id: "terms" }),
     });
-    await vi.advanceTimersByTimeAsync(900);
+    expect(document.getElementById("scenario-recorder-selection-assert-menu")).toBeNull();
   });
 
   it("ignores events from the recorder overlay", async () => {

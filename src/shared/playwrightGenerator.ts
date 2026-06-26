@@ -140,7 +140,9 @@ function stepToPlaywright(step: ScenarioStep, previousStep: ScenarioStep | undef
     return ["  // Unsupported assertion step"];
   }
   if (step.type === "selection") {
-    return [`  // Selected text: ${JSON.stringify(step.value)}`];
+    return [
+      `  await expect(page.getByText(${textAssertionExpression(step.value)})).toBeVisible();`
+    ];
   }
   const selector = targetToLocator(step.target);
   if (!selector) {
@@ -192,6 +194,16 @@ function urlAssertionExpression(expected: string): string {
     source = source.replaceAll(escapeRegExp(mask), "[^/?#&]+");
   }
   return `new RegExp(${JSON.stringify(`^${source}$`)})`;
+}
+
+function textAssertionExpression(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  const snippet = normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized;
+  if (!snippet) {
+    return JSON.stringify(value);
+  }
+  const source = escapeRegExp(snippet).replace(/\s+/g, "\\s+");
+  return `new RegExp(${JSON.stringify(source)})`;
 }
 
 function valueToPlaywrightExpression(value: string | string[], context: PlaywrightContext): string {

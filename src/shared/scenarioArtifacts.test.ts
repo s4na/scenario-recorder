@@ -383,15 +383,22 @@ describe("scenario artifacts", () => {
         ...scenario.steps,
         {
           id: "step_18",
-          type: "assert",
+          type: "selection",
           timestamp: 18,
           url: "https://example.com/unsupported",
-          assertion: { kind: "text", expected: "Saved" } as never
+          value: "Saved successfully"
         },
         {
           id: "step_19",
           type: "assert",
           timestamp: 19,
+          url: "https://example.com/unsupported",
+          assertion: { kind: "text", expected: "Saved" } as never
+        },
+        {
+          id: "step_20",
+          type: "assert",
+          timestamp: 20,
           url: "https://example.com/callback?code={{SECRET}}",
           assertion: { kind: "url", expected: "https://example.com/callback?code={{SECRET}}" }
         }
@@ -419,6 +426,7 @@ describe("scenario artifacts", () => {
     expect(code).toContain("  await page.locator(\"[name=\\\"secretChoice\\\"]\").selectOption([secret]);");
     expect(code).toContain("  await page.goto(\"https://example.com/unsupported\");");
     expect(code).toContain("  await page.waitForLoadState(\"networkidle\");");
+    expect(code).toContain("  await expect(page.getByText(new RegExp(\"Saved\\\\s+successfully\"))).toBeVisible();");
     expect(code).toContain("  await expect(page).toHaveURL(new RegExp(\"^https://example\\\\.com/callback\\\\?code=[^/?#&]+$\"));");
     expect(code).toContain("Unsupported assertion step");
     const orderedFragments = [
@@ -442,6 +450,7 @@ describe("scenario artifacts", () => {
       "  await page.locator(\"[data-cy=\\\"confirm-action\\\"]\").click();",
       "  await page.getByLabel(\"Close\").click();",
       "  await page.locator(\"[data-test=\\\"delete-action\\\"]\").click();",
+      "  await expect(page.getByText(new RegExp(\"Saved\\\\s+successfully\"))).toBeVisible();",
       "Unsupported assertion step",
       "  await expect(page).toHaveURL(new RegExp(\"^https://example\\\\.com/callback\\\\?code=[^/?#&]+$\"));"
     ];
