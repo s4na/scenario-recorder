@@ -18,6 +18,19 @@ describe("recording overlay", () => {
       stepCount: 3,
       lastStepType: "fill",
       currentUrl: "https://app.example/customers?token={{SECRET}}",
+      recentSteps: [{
+        id: "step_fill",
+        type: "fill",
+        timestamp: 100,
+        url: "https://app.example/customers?token={{SECRET}}",
+        title: "Customers",
+        value: "Sana",
+        target: {
+          tagName: "input",
+          label: "Name",
+          selectorCandidates: [{ type: "label", value: "Name", confidence: 90 }]
+        }
+      }],
     });
 
     const host = document.getElementById("scenario-recorder-status-overlay");
@@ -30,8 +43,8 @@ describe("recording overlay", () => {
     expect(text).toContain("記録中");
     expect(text).toContain("recording");
     expect(text).toContain("3");
-    expect(text).toContain("fill");
-    expect(text).toContain("https://app.example/customers");
+    expect(text).toContain("「Name」に入力");
+    expect(text).toContain("Customersページ");
     expect(text).not.toContain("token");
     expect(text).not.toContain("{{SECRET}}");
     expect(markup).toContain("position: fixed");
@@ -45,6 +58,7 @@ describe("recording overlay", () => {
       status: "paused",
       stepCount: 1,
       currentUrl: "https://app.example",
+      recentSteps: [],
     });
 
     renderRecordingOverlay({ visible: false });
@@ -59,6 +73,7 @@ describe("recording overlay", () => {
       stepCount: 4,
       lastStepType: "click",
       currentUrl: "https://app.example",
+      recentSteps: [],
     });
 
     const host = document.getElementById("scenario-recorder-status-overlay");

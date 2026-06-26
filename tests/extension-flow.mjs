@@ -66,20 +66,23 @@ try {
   await controlPage.reload({ waitUntil: "domcontentloaded" });
   await controlPage.waitForFunction(() => {
     const buttons = Array.from(document.querySelectorAll("button"));
-    return buttons.some((button) => button.textContent?.trim() === "この記録をzipでエクスポート" && !button.disabled);
+    return buttons.some((button) => button.textContent?.trim() === "zip取得" && !button.disabled);
   }, { timeout: 12_000 });
   const popupText = await controlPage.evaluate(() => document.body.innerText);
-  assert(popupText.includes("作る"), "Popup does not expose the recording workflow.");
-  assert(popupText.includes("エクスポート"), "Popup does not expose the export workflow.");
-  assert(popupText.includes("記録一覧"), "Popup does not expose the record list.");
-  assert(popupText.includes("記録の流れ"), "Popup does not show saved record step summaries.");
-  assert(popupText.includes("この記録をzipでエクスポート"), "Popup does not expose one-record ZIP export.");
+  assert(popupText.includes("録画"), "Popup does not expose the recording workflow.");
+  assert(popupText.includes("シナリオ一覧"), "Popup does not expose the scenario list.");
+  assert(popupText.includes("ステップ"), "Popup does not show saved scenario step summaries.");
+  assert(popupText.includes("zip取得"), "Popup does not expose one-scenario ZIP export.");
+  assert(popupText.includes("全シナリオをzipで取得"), "Popup does not expose all-scenario ZIP export.");
+  assert(!popupText.includes("記録名"), "Popup still asks users to name scenarios before saving.");
+  assert(!popupText.includes("対象と管理"), "Popup still exposes secondary management UI.");
+  assert(!popupText.includes("一時停止"), "Popup still exposes pause as a primary workflow.");
   assert(!popupText.includes("軽く記録"), "Popup still asks users to choose a lightweight recording mode.");
   assert(!popupText.includes("詳細に記録"), "Popup still asks users to choose a detailed recording mode.");
   assert(!popupText.includes("Codex用"), "Popup still exposes Codex-specific wording.");
   assert(!popupText.includes("Playwrightをダウンロード"), "Popup still exposes Playwright as a primary action.");
   const existingLatestZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
-  await clickPopupButtonWithText(controlPage, "この記録をzipでエクスポート");
+  await clickPopupButtonWithText(controlPage, "zip取得");
   const latestScenarioZip = await waitForDownloadedFile(".zip", existingLatestZipFiles);
   const latestEntries = readZipEntries(readFileSync(latestScenarioZip));
   const latestEntryNames = Object.keys(latestEntries).sort();
@@ -103,13 +106,8 @@ try {
       latestSpecText.includes("await page."),
     "Downloaded Playwright file does not include generated test code.",
   );
-  await openPopupDetailsWithText(controlPage, "対象と管理");
-  assert(
-    await controlPage.evaluate(() => document.body.innerText.includes("全記録をzipでエクスポート")),
-    "Popup does not expose all-record export.",
-  );
   const existingZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
-  await clickPopupButtonWithText(controlPage, "全記録をzipでエクスポート");
+  await clickPopupButtonWithText(controlPage, "全シナリオをzipで取得");
   const allRecordsZip = await waitForDownloadedFile(".zip", existingZipFiles);
   const zipEntries = readZipEntries(readFileSync(allRecordsZip));
   const zipEntryNames = Object.keys(zipEntries);
@@ -146,14 +144,6 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await fixturePage.keyboard.press("ArrowDown");
   await fixturePage.keyboard.press("ArrowDown");
   await fixturePage.keyboard.press("Enter");
-  await clickPopup(controlPage, "pause-recording");
-  await waitForRecorderStatus(controlPage, "paused");
-  await waitForOverlay(fixturePage, "paused");
-  await fixturePage.click("#paused-action");
-  await clickPopup(controlPage, "resume-recording");
-  await waitForRecorderStatus(controlPage, "recording");
-  await waitForOverlay(fixturePage, "recording");
-  await fixturePage.click("#resume-action");
   await Promise.all([
     fixturePage.waitForNavigation({ waitUntil: "domcontentloaded" }),
     fixturePage.click("#submit-booking"),
@@ -162,12 +152,14 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   await waitForRecorderStatus(controlPage, "recording");
   const existingSaveZipFiles = new Set(readdirSync(downloadDir).filter((file) => file.endsWith(".zip")));
   await clickPopup(controlPage, "save-scenario");
-  const savedScenarioZip = await waitForDownloadedFile(".zip", existingSaveZipFiles);
+  await assertNoDownloadedFile(".zip", existingSaveZipFiles);
   await waitForRecorderStatus(controlPage, "idle");
   await waitForScenarioCount(controlPage, 1);
 
   const [scenario] = await getScenarios(controlPage);
-  const savedEntries = readZipEntries(readFileSync(savedScenarioZip));
+  await clickPopupButtonWithText(controlPage, "zip取得");
+  const downloadedScenarioZip = await waitForDownloadedFile(".zip", existingSaveZipFiles);
+  const savedEntries = readZipEntries(readFileSync(downloadedScenarioZip));
   const savedJsonlName = Object.keys(savedEntries).find((entry) => entry.endsWith(".jsonl"));
   const savedSpecName = Object.keys(savedEntries).find((entry) => entry.endsWith(".spec.ts"));
   assert(savedJsonlName !== undefined && savedSpecName !== undefined, "Saved scenario ZIP is missing JSONL or Playwright files.");
@@ -252,10 +244,6 @@ async function runContextRecording({ controlPage, fixturePage, fixtureOrigin }) 
   assert(
     scenario.steps.some((step) => step.target?.context?.length > 0),
     "Context recording did not keep target context.",
-  );
-  assert(
-    !scenario.steps.some((step) => step.target?.text === "Paused action"),
-    "Paused interaction was recorded.",
   );
 }
 
@@ -375,26 +363,6 @@ async function clickPopupButtonWithText(controlPage, text) {
   }, text);
 }
 
-async function openPopupDetailsWithText(controlPage, text) {
-  await controlPage.bringToFront();
-  await controlPage.waitForFunction((summaryText) => {
-    const summaries = Array.from(document.querySelectorAll("summary"));
-    return summaries.some((summary) => summary.textContent?.trim() === summaryText);
-  }, { timeout: 8_000 }, text);
-  await controlPage.evaluate((summaryText) => {
-    const summary = Array.from(document.querySelectorAll("summary"))
-      .find((candidate) => candidate.textContent?.trim() === summaryText);
-    if (!(summary instanceof HTMLElement)) {
-      throw new Error(`Summary was not found: ${summaryText}`);
-    }
-    const details = summary.closest("details");
-    if (!(details instanceof HTMLDetailsElement)) {
-      throw new Error(`Details was not found: ${summaryText}`);
-    }
-    details.open = true;
-  }, text);
-}
-
 async function waitForRecorderStatus(controlPage, status) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 8_000) {
@@ -494,6 +462,13 @@ async function waitForDownloadedFile(extension, existingFiles = new Set()) {
     await delay(100);
   }
   throw new Error(`Download with extension ${extension} was not created.`);
+}
+
+async function assertNoDownloadedFile(extension, existingFiles = new Set()) {
+  await delay(600);
+  const files = readdirSync(downloadDir)
+    .filter((file) => file.endsWith(extension) && !file.endsWith(".crdownload") && !existingFiles.has(file));
+  assert(files.length === 0, `Unexpected download was created: ${files.join(", ")}`);
 }
 
 function parseJsonl(text) {

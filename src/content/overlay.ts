@@ -1,4 +1,5 @@
 import type { RecordingOverlayState } from "../shared/types";
+import { describeStep, pageLabel } from "../shared/stepSummary";
 
 const HOST_ID = "scenario-recorder-status-overlay";
 
@@ -18,6 +19,8 @@ export function renderRecordingOverlay(
   }
   const statusClass = state.status === "recording" ? "recording" : "paused";
   const title = state.status === "recording" ? "記録中" : "記録を一時停止中";
+  const recentSteps = state.recentSteps.slice().reverse();
+  const lastStep = recentSteps[0];
   root.innerHTML = `
     <style>
       :host {
@@ -31,7 +34,7 @@ export function renderRecordingOverlay(
         bottom: 16px;
         z-index: 2147483647;
         box-sizing: border-box;
-        width: min(320px, calc(100vw - 32px));
+        width: min(360px, calc(100vw - 32px));
         padding: 12px 14px;
         border: 1px solid rgba(255, 255, 255, 0.18);
         border-radius: 8px;
@@ -47,7 +50,7 @@ export function renderRecordingOverlay(
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
       }
       .title {
         font-size: 12px;
@@ -72,8 +75,7 @@ export function renderRecordingOverlay(
       }
       .grid {
         display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 5px 10px;
+        gap: 10px;
       }
       .label {
         color: #aeb7c6;
@@ -83,6 +85,74 @@ export function renderRecordingOverlay(
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+      .latest {
+        display: grid;
+        gap: 2px;
+        padding: 9px 10px;
+        border: 1px solid rgba(148, 163, 184, 0.32);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .latest strong {
+        overflow: hidden;
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .latest small,
+      .empty {
+        color: #aeb7c6;
+        font-size: 11px;
+      }
+      .flow {
+        display: grid;
+        gap: 0;
+        max-height: 190px;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        list-style: none;
+      }
+      .flow li {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        gap: 8px;
+        min-width: 0;
+        padding: 6px 0;
+        border-top: 1px solid rgba(148, 163, 184, 0.22);
+      }
+      .flow li:first-child {
+        border-top: 0;
+      }
+      .node {
+        display: inline-grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        color: #0f172a;
+        background: #facc15;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .stepText {
+        display: grid;
+        gap: 1px;
+        min-width: 0;
+      }
+      .stepText strong,
+      .stepText small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .stepText strong {
+        font-size: 12px;
+      }
+      .stepText small {
+        color: #aeb7c6;
+        font-size: 10px;
       }
     </style>
     <div class="panel" role="status" aria-live="polite">
@@ -94,12 +164,24 @@ export function renderRecordingOverlay(
         </div>
       </div>
       <div class="grid">
-        <span class="label">steps</span>
-        <span class="value">${state.stepCount}</span>
-        <span class="label">last</span>
-        <span class="value">${escapeHtml(state.lastStepType ?? "none")}</span>
-        <span class="label">url</span>
-        <span class="value">${escapeHtml(formatUrl(state.currentUrl))}</span>
+        <div class="latest">
+          <small>${state.stepCount} steps</small>
+          <strong>${escapeHtml(lastStep ? describeStep(lastStep) : "まだ操作は記録されていません")}</strong>
+          <small>${escapeHtml(lastStep ? pageLabel(lastStep.url, lastStep.title) : formatUrl(state.currentUrl))}</small>
+        </div>
+        ${recentSteps.length > 0 ? `
+          <ol class="flow">
+            ${recentSteps.map((step, index) => `
+              <li>
+                <span class="node">${state.stepCount - index}</span>
+                <span class="stepText">
+                  <small>${escapeHtml(pageLabel(step.url, step.title))}</small>
+                  <strong>${escapeHtml(describeStep(step))}</strong>
+                </span>
+              </li>
+            `).join("")}
+          </ol>
+        ` : `<p class="empty">操作するとここにステップが追加されます。</p>`}
       </div>
     </div>
   `;
